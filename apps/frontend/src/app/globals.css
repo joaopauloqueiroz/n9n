@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-background text-white;
+}
+
+/* React Flow custom styles */
+.react-flow {
+  @apply bg-background;
+}
+
+.react-flow__node {
+  @apply bg-surface border-2 border-border rounded-lg;
+}
+
+.react-flow__node.selected {
+  @apply border-primary;
+}
+
+.react-flow__node.running {
+  @apply border-primary animate-pulse;
+}
+
+.react-flow__node.waiting {
+  @apply border-yellow-500;
+}
+
+.react-flow__node.error {
+  @apply border-red-500;
+}
+
+.react-flow__edge-path {
+  @apply stroke-border;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  @apply stroke-primary;
+}
+
+.react-flow__controls {
+  @apply bg-surface border border-border;
+}
+
+.react-flow__controls-button {
+  @apply bg-surface border-border text-white;
+}
+
+.react-flow__controls-button:hover {
+  @apply bg-primary text-black;
+}
+
+.react-flow__minimap {
+  @apply bg-surface border border-border;
+}
+

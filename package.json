@@ -1,0 +1,29 @@
+{
+  "name": "n9n",
+  "version": "1.0.0",
+  "description": "Conversation Workflow Engine as a Service",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "pnpm --filter @n9n/backend dev",
+    "dev:frontend": "pnpm --filter @n9n/frontend dev",
+    "dev": "concurrently \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @n9n/backend db:migrate",
+    "db:seed": "pnpm --filter @n9n/backend db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+

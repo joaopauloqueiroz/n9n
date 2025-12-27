@@ -1,0 +1,104 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ExecutionService } from '../execution/execution.service';
+import { ExecutionEngineService } from '../execution/execution-engine.service';
+import { WorkflowNodeType, ExecutionStatus } from '@n9n/shared';
+
+@Injectable()
+export class WhatsappMessageHandler {
+  constructor(
+    private prisma: PrismaService,
+    private executionService: ExecutionService,
+    private executionEngine: ExecutionEngineService,
+  ) {}
+
+  /**
+   * Handle incoming WhatsApp message
+   */
+  async handleMessage(
+    tenantId: string,
+    sessionId: string,
+    contactId: string,
+    message: string,
+  ): Promise<void> {
+    // Check for active execution
+    const activeExecution = await this.executionService.getActiveExecution(
+      tenantId,
+      sessionId,
+      contactId,
+    );
+
+    if (activeExecution) {
+      // Resume existing execution
+      if (activeExecution.status === ExecutionStatus.WAITING) {
+        await this.executionEngine.resumeExecution(activeExecution, message);
+      }
+    } else {
+      // Try to match trigger
+      await this.matchTriggerAndStart(tenantId, sessionId, contactId, message);
+    }
+  }
+
+  /**
+   * Match message against workflow triggers and start execution
+   */
+  private async matchTriggerAndStart(
+    tenantId: string,
+    sessionId: string,
+    contactId: string,
+    message: string,
+  ): Promise<void> {
+    // Get active workflows for this tenant
+    const workflows = await this.prisma.workflow.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+      },
+    });
+
+    for (const workflowData of workflows) {
+      const workflow = {
+        ...workflowData,
+        description: workflowData.description || undefined,
+        nodes: workflowData.nodes as any,
+        edges: workflowData.edges as any,
+      };
+
+      // Find trigger node
+      const triggerNode = workflow.nodes.find(
+        (n: any) => n.type === WorkflowNodeType.TRIGGER_MESSAGE,
+      );
+
+      if (!triggerNode) {
+        continue;
+      }
+
+      const config = triggerNode.config;
+
+      // Match message against trigger pattern
+      let matches = false;
+
+      if (config.matchType === 'exact') {
+        matches = message.toLowerCase() === config.pattern.toLowerCase();
+      } else if (config.matchType === 'contains') {
+        matches = message.toLowerCase().includes(config.pattern.toLowerCase());
+      } else if (config.matchType === 'regex') {
+        const regex = new RegExp(config.pattern, 'i');
+        matches = regex.test(message);
+      }
+
+      if (matches) {
+        // Start execution
+        await this.executionEngine.startExecution(
+          tenantId,
+          workflow.id,
+          sessionId,
+          contactId,
+          message,
+        );
+        break; // Only trigger first matching workflow
+      }
+    }
+  }
+}
+

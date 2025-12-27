@@ -1,0 +1,30 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
+import { EventBusModule } from './event-bus/event-bus.module';
+import { WorkflowModule } from './workflow/workflow.module';
+import { ExecutionModule } from './execution/execution.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { WebsocketModule } from './websocket/websocket.module';
+import { WorkerModule } from './worker/worker.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    EventEmitterModule.forRoot(),
+    PrismaModule,
+    RedisModule,
+    EventBusModule,
+    WorkflowModule,
+    ExecutionModule,
+    WhatsappModule,
+    WebsocketModule,
+    WorkerModule,
+  ],
+})
+export class AppModule {}
+
