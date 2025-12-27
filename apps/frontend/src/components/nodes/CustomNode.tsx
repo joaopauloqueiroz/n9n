@@ -243,7 +243,7 @@ function CustomNode({ data }: CustomNodeProps) {
       {!isTrigger && (
         <Handle 
           type="target" 
-          position={Position.Top}
+          position={Position.Left}
           className="!w-3 !h-3 !bg-gray-400 !border-2 !border-gray-600 hover:!bg-primary hover:!border-primary transition-colors"
         />
       )}
@@ -299,16 +299,16 @@ function CustomNode({ data }: CustomNodeProps) {
             <>
               <Handle 
                 type="source" 
-                position={Position.Bottom}
+                position={Position.Right}
                 id="true"
-                style={{ left: '35%' }}
+                style={{ top: '35%' }}
                 className="!w-3 !h-3 !bg-green-400 !border-2 !border-green-600 hover:!bg-green-300 transition-colors"
               />
               <Handle 
                 type="source" 
-                position={Position.Bottom}
+                position={Position.Right}
                 id="false"
-                style={{ left: '65%' }}
+                style={{ top: '65%' }}
                 className="!w-3 !h-3 !bg-red-400 !border-2 !border-red-600 hover:!bg-red-300 transition-colors"
               />
               {/* Labels for condition outputs */}
@@ -335,9 +335,9 @@ function CustomNode({ data }: CustomNodeProps) {
                   <Handle
                     key={rule.id || index}
                     type="source"
-                    position={Position.Bottom}
+                    position={Position.Right}
                     id={rule.outputKey || String(index)}
-                    style={{ left: `${position}%` }}
+                    style={{ top: `${position}%` }}
                     className={`!w-3 !h-3 !border-2 transition-colors ${colorClass}`}
                   />
                 )
@@ -345,13 +345,13 @@ function CustomNode({ data }: CustomNodeProps) {
               {/* Default handle (always present) */}
               <Handle
                 type="source"
-                position={Position.Bottom}
+                position={Position.Right}
                 id="default"
-                style={{ left: `${((switchRules.length + 1) / (switchRules.length + 2)) * 100}%` }}
+                style={{ top: `${((switchRules.length + 1) / (switchRules.length + 2)) * 100}%` }}
                 className="!w-3 !h-3 !bg-yellow-400 !border-2 !border-yellow-600 hover:!bg-yellow-300 transition-colors"
               />
               {/* Labels for switch outputs */}
-              <div className="absolute -bottom-5 left-0 right-0 flex justify-around text-[9px] font-bold px-2">
+              <div className="absolute -right-5 top-0 bottom-0 flex flex-col justify-around text-[9px] font-bold py-2">
                 {switchRules.map((rule: any, index: number) => (
                   <span key={rule.id || index} className="text-indigo-400 truncate">
                     {index}
@@ -363,7 +363,7 @@ function CustomNode({ data }: CustomNodeProps) {
           ) : (
             <Handle 
               type="source" 
-              position={Position.Bottom}
+              position={Position.Right}
               className="!w-3 !h-3 !bg-gray-400 !border-2 !border-gray-600 hover:!bg-primary hover:!border-primary transition-colors"
             />
           )}

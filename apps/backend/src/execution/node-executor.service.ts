@@ -391,38 +391,22 @@ export class NodeExecutorService {
     const config = node.config as any; // SwitchConfig
     const rules = config.rules || [];
 
-    console.log('[SWITCH] Node:', node.id);
-    console.log('[SWITCH] Rules:', rules.length);
-    console.log('[SWITCH] Context variables:', context.variables);
-
-    // Evaluate each rule in order
     for (let i = 0; i < rules.length; i++) {
       const rule = rules[i];
       
-      // Build expression from rule
       let expression = '';
       if (rule.operator.includes('(')) {
-        // For methods like includes, startsWith, endsWith
         expression = `${rule.value1}${rule.operator}"${rule.value2}")`;
       } else {
         expression = `${rule.value1} ${rule.operator} ${rule.value2}`;
       }
 
-      console.log(`[SWITCH] Evaluating rule ${i}:`, expression);
-
-      // Evaluate the expression
       const result = this.contextService.evaluateExpression(expression, context);
-      console.log(`[SWITCH] Rule ${i} result:`, result);
 
       if (result) {
-        // Find edge with matching outputKey
         const nextEdge = edges.find(
           (e) => e.source === node.id && e.condition === rule.outputKey,
         );
-
-        console.log(`[SWITCH] Rule ${i} matched! Looking for edge with condition:`, rule.outputKey);
-        console.log('[SWITCH] Available edges:', edges.filter(e => e.source === node.id));
-        console.log('[SWITCH] Selected edge:', nextEdge);
 
         const nextNodeId = nextEdge ? nextEdge.target : null;
 
@@ -440,15 +424,9 @@ export class NodeExecutorService {
     }
 
     // No rule matched - use default output
-    console.log('[SWITCH] No rules matched, using default output');
-    
     const defaultEdge = edges.find(
       (e) => e.source === node.id && e.condition === 'default',
     );
-    
-    console.log('[SWITCH] Looking for default edge');
-    console.log('[SWITCH] Available edges:', edges.filter(e => e.source === node.id));
-    console.log('[SWITCH] Default edge:', defaultEdge);
     
     const nextNodeId = defaultEdge ? defaultEdge.target : null;
     
@@ -598,7 +576,6 @@ export class NodeExecutorService {
       };
     }
 
-    console.log(`[HTTP_REQUEST] ${config.method} ${finalUrl}`);
 
     try {
       // Execute HTTP request with timeout
@@ -635,8 +612,6 @@ export class NodeExecutorService {
       // Save response to context
       const saveAs = config.saveResponseAs || 'httpResponse';
       this.contextService.setVariable(context, saveAs, httpResponse);
-
-      console.log(`[HTTP_REQUEST] Response: ${response.status} ${response.statusText}`);
 
       // Find next node
       const nextEdge = edges.find((e) => e.source === node.id);
@@ -691,10 +666,8 @@ export class NodeExecutorService {
     // If user replied with a number and we have a mapping, convert it
     if (buttonMapping && buttonMapping[message]) {
       finalValue = buttonMapping[message];
-      console.log(`[WAIT_REPLY] Converted button number ${message} to ID: ${finalValue}`);
     } else if (listMapping && listMapping[message]) {
       finalValue = listMapping[message];
-      console.log(`[WAIT_REPLY] Converted list number ${message} to ID: ${finalValue}`);
     }
 
     // Save reply to variable

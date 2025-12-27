@@ -224,6 +224,11 @@ export default function WorkflowCanvas({
         onDragOver={onDragOver}
         nodeTypes={nodeTypes}
         fitView
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          animated: true,
+        }}
+        connectionLineType="smoothstep"
       >
         <Controls />
         <Background />
