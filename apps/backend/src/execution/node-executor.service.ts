@@ -363,26 +363,14 @@ export class NodeExecutorService {
     // Evaluate expression
     const result = this.contextService.evaluateExpression(config.expression, context);
 
-    console.log('[CONDITION] Node:', node.id);
-    console.log('[CONDITION] Expression:', config.expression);
-    console.log('[CONDITION] Result:', result);
-    console.log('[CONDITION] Context variables:', context.variables);
-
-    // Store result in output
     this.contextService.setOutput(context, { conditionResult: result });
 
-    // Find next node based on condition
-    // Check both 'condition' field and 'label' field for backward compatibility
     const nextEdge = edges.find(
       (e) => e.source === node.id && (
         e.condition === (result ? 'true' : 'false') ||
         e.label === (result ? 'true' : 'false')
       ),
     );
-
-    console.log('[CONDITION] Looking for edge with condition:', result ? 'true' : 'false');
-    console.log('[CONDITION] Available edges:', edges.filter(e => e.source === node.id));
-    console.log('[CONDITION] Selected edge:', nextEdge);
 
     const nextNodeId = nextEdge ? nextEdge.target : null;
 
