@@ -11,6 +11,7 @@
   "dependencies": {
     "@n9n/shared": "workspace:*",
     "axios": "^1.6.5",
+    "lucide-react": "^0.562.0",
     "next": "^14.0.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -31,4 +32,3 @@
     "typescript": "^5.3.3"
   }
 }
-

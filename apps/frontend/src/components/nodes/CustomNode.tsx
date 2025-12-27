@@ -1,6 +1,7 @@
-import { memo } from 'react'
-import { Handle, Position } from 'reactflow'
+import { memo, useState } from 'react'
+import { Handle, Position, useReactFlow } from 'reactflow'
 import { WorkflowNodeType } from '@n9n/shared'
+import { Trash2, Play, MoreHorizontal } from 'lucide-react'
 
 const nodeConfig: Record<string, any> = {
   'TRIGGER_MESSAGE': {
@@ -112,7 +113,7 @@ interface CustomNodeProps {
   }
 }
 
-function CustomNode({ data }: CustomNodeProps) {
+function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
   const config = nodeConfig[data.type] || {
     label: data.type,
     subtitle: 'NODE',
@@ -121,6 +122,9 @@ function CustomNode({ data }: CustomNodeProps) {
     borderColor: 'border-gray-600',
     iconBg: 'bg-gradient-to-br from-gray-500 to-gray-600',
   }
+
+  const { deleteElements } = useReactFlow()
+  const [isHovered, setIsHovered] = useState(false)
 
   const isTrigger =
     data.type === 'TRIGGER_MESSAGE' ||
@@ -132,6 +136,11 @@ function CustomNode({ data }: CustomNodeProps) {
   
   // Get switch rules for dynamic handles
   const switchRules = isSwitch && data.config.rules ? data.config.rules : []
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    deleteElements({ nodes: [{ id }] })
+  }
 
   // Determine border style based on execution state
   const getExecutionBorderClass = () => {
@@ -236,7 +245,28 @@ function CustomNode({ data }: CustomNodeProps) {
         backdrop-blur-sm
         relative
       `}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
+      {/* Action Buttons - appear on hover */}
+      {isHovered && (
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-1 z-50">
+          <button
+            onClick={handleDelete}
+            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 rounded transition-colors"
+            title="Deletar"
+          >
+            <Trash2 size={14} />
+          </button>
+          <button
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 rounded transition-colors"
+            title="Mais opções"
+          >
+            <MoreHorizontal size={14} />
+          </button>
+        </div>
+      )}
+      
       {/* Execution Badge */}
       {getExecutionBadge()}
       {/* Input Handle */}

@@ -12,14 +12,22 @@ import ReactFlow, {
   addEdge,
   Connection,
   NodeTypes,
+  EdgeTypes,
   useReactFlow,
+  Panel,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@n9n/shared'
 import CustomNode from './nodes/CustomNode'
+import CustomEdge from './edges/CustomEdge'
+import { Trash2 } from 'lucide-react'
 
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
+}
+
+const edgeTypes: EdgeTypes = {
+  custom: CustomEdge,
 }
 
 interface WorkflowCanvasProps {
@@ -49,6 +57,8 @@ export default function WorkflowCanvas({
 }: WorkflowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [selectedNodes, setSelectedNodes] = useState<string[]>([])
+  const [selectedEdges, setSelectedEdges] = useState<string[]>([])
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
 
   // Convert to React Flow format
@@ -69,6 +79,7 @@ export default function WorkflowCanvas({
 
     const flowEdges: Edge[] = initialEdges.map((edge) => ({
       id: edge.id,
+      type: 'custom',
       source: edge.source,
       target: edge.target,
       sourceHandle: edge.condition || undefined, // Use condition as sourceHandle for CONDITION nodes
@@ -170,6 +181,43 @@ export default function WorkflowCanvas({
     [nodes, edges, onChange, readonly, onNodesChange]
   )
 
+  const handleEdgesChange = useCallback(
+    (changes: any) => {
+      onEdgesChange(changes)
+
+      if (onChange && !readonly) {
+        // Check if there's a remove change
+        const hasRemove = changes.some((c: any) => c.type === 'remove')
+        
+        if (hasRemove) {
+          // Wait for state to update, then save
+          setTimeout(() => {
+            setEdges((currentEdges) => {
+              const workflowNodes: WorkflowNode[] = nodes.map((node) => ({
+                id: node.id,
+                type: node.data.type,
+                config: node.data.config,
+                position: node.position,
+              }))
+              
+              const workflowEdges: WorkflowEdge[] = currentEdges.map((e) => ({
+                id: e.id,
+                source: e.source,
+                target: e.target,
+                label: typeof e.label === 'string' ? e.label : undefined,
+                condition: e.sourceHandle || undefined,
+              }))
+              
+              onChange(workflowNodes, workflowEdges)
+              return currentEdges
+            })
+          }, 0)
+        }
+      }
+    },
+    [nodes, onChange, readonly, onEdgesChange]
+  )
+
   const handleNodeDoubleClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       if (onNodeDoubleClick) {
@@ -211,21 +259,107 @@ export default function WorkflowCanvas({
     [onAddNode]
   )
 
+  const onSelectionChange = useCallback(({ nodes: selectedNodes, edges: selectedEdges }: { nodes: Node[], edges: Edge[] }) => {
+    setSelectedNodes(selectedNodes.map(n => n.id))
+    setSelectedEdges(selectedEdges.map(e => e.id))
+  }, [])
+
+  const handleDelete = useCallback(() => {
+    if (readonly) return
+
+    // Delete selected nodes
+    if (selectedNodes.length > 0) {
+      const updatedNodes = nodes.filter(n => !selectedNodes.includes(n.id))
+      const updatedEdges = edges.filter(e => !selectedNodes.includes(e.source) && !selectedNodes.includes(e.target))
+      
+      setNodes(updatedNodes)
+      setEdges(updatedEdges)
+
+      if (onChange) {
+        const workflowNodes: WorkflowNode[] = updatedNodes.map((node) => ({
+          id: node.id,
+          type: node.data.type,
+          config: node.data.config,
+          position: node.position,
+        }))
+        
+        const workflowEdges: WorkflowEdge[] = updatedEdges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          label: typeof e.label === 'string' ? e.label : undefined,
+          condition: e.sourceHandle || undefined,
+        }))
+        
+        onChange(workflowNodes, workflowEdges)
+      }
+      
+      setSelectedNodes([])
+    }
+
+    // Delete selected edges
+    if (selectedEdges.length > 0) {
+      const updatedEdges = edges.filter(e => !selectedEdges.includes(e.id))
+      
+      setEdges(updatedEdges)
+
+      if (onChange) {
+        const workflowNodes: WorkflowNode[] = nodes.map((node) => ({
+          id: node.id,
+          type: node.data.type,
+          config: node.data.config,
+          position: node.position,
+        }))
+        
+        const workflowEdges: WorkflowEdge[] = updatedEdges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          label: typeof e.label === 'string' ? e.label : undefined,
+          condition: e.sourceHandle || undefined,
+        }))
+        
+        onChange(workflowNodes, workflowEdges)
+      }
+      
+      setSelectedEdges([])
+    }
+  }, [readonly, selectedNodes, selectedEdges, nodes, edges, onChange])
+
+  // Handle keyboard delete
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && !readonly) {
+        // Check if we're not in an input field
+        const target = event.target as HTMLElement
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          event.preventDefault()
+          handleDelete()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleDelete, readonly])
+
   return (
     <div ref={reactFlowWrapper} className="w-full h-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={handleNodesChange}
-        onEdgesChange={onEdgesChange}
+        onEdgesChange={handleEdgesChange}
         onConnect={onConnect}
         onNodeDoubleClick={handleNodeDoubleClick}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        onSelectionChange={onSelectionChange}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         defaultEdgeOptions={{
-          type: 'smoothstep',
+          type: 'custom',
           animated: true,
         }}
         connectionLineType="smoothstep"
@@ -238,6 +372,7 @@ export default function WorkflowCanvas({
             return '#333'
           }}
         />
+        
       </ReactFlow>
     </div>
   )
