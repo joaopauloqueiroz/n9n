@@ -14,11 +14,20 @@ export interface ListSection {
   }>;
 }
 
+export interface MediaData {
+  type: 'image' | 'video' | 'audio' | 'document';
+  url: string;
+  caption?: string;
+  fileName?: string;
+  sendAudioAsVoice?: boolean;
+}
+
 @Injectable()
 export class WhatsappSenderService {
   private sendMessageCallback: ((sessionId: string, contactId: string, message: string) => Promise<void>) | null = null;
   private sendButtonsCallback: ((sessionId: string, contactId: string, message: string, buttons: ButtonData[], footer?: string) => Promise<void>) | null = null;
   private sendListCallback: ((sessionId: string, contactId: string, message: string, buttonText: string, sections: ListSection[], footer?: string) => Promise<void>) | null = null;
+  private sendMediaCallback: ((sessionId: string, contactId: string, mediaType: 'image' | 'video' | 'audio' | 'document', mediaUrl: string, options?: { caption?: string; fileName?: string; sendAudioAsVoice?: boolean }) => Promise<void>) | null = null;
 
   /**
    * Register the send message callback
@@ -39,6 +48,13 @@ export class WhatsappSenderService {
    */
   registerSendList(callback: (sessionId: string, contactId: string, message: string, buttonText: string, sections: ListSection[], footer?: string) => Promise<void>) {
     this.sendListCallback = callback;
+  }
+
+  /**
+   * Register the send media callback
+   */
+  registerSendMedia(callback: (sessionId: string, contactId: string, mediaType: 'image' | 'video' | 'audio' | 'document', mediaUrl: string, options?: { caption?: string; fileName?: string; sendAudioAsVoice?: boolean }) => Promise<void>) {
+    this.sendMediaCallback = callback;
   }
 
   /**
@@ -88,6 +104,33 @@ export class WhatsappSenderService {
       await this.sendListCallback(sessionId, contactId, message, buttonText, sections, footer);
     } catch (error) {
       console.error('Error sending WhatsApp list:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send WhatsApp media (image, video, audio, document)
+   */
+  async sendMedia(
+    sessionId: string, 
+    contactId: string, 
+    mediaType: 'image' | 'video' | 'audio' | 'document',
+    mediaUrl: string,
+    options?: {
+      caption?: string;
+      fileName?: string;
+      sendAudioAsVoice?: boolean;
+    }
+  ): Promise<void> {
+    if (!this.sendMediaCallback) {
+      console.warn('WhatsApp send media callback not registered yet');
+      return;
+    }
+
+    try {
+      await this.sendMediaCallback(sessionId, contactId, mediaType, mediaUrl, options);
+    } catch (error) {
+      console.error('Error sending WhatsApp media:', error);
       throw error;
     }
   }

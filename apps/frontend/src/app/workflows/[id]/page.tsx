@@ -34,6 +34,8 @@ export default function WorkflowPage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [executedNodes, setExecutedNodes] = useState<Set<string>>(new Set())
   const [failedNodes, setFailedNodes] = useState<Set<string>>(new Set())
+  const [isViewingHistory, setIsViewingHistory] = useState(false)
+  const [historicalExecutionId, setHistoricalExecutionId] = useState<string | null>(null)
   
   // Refs to keep track of latest nodes and edges
   const currentNodesRef = useRef<WorkflowNode[]>([])
@@ -258,6 +260,52 @@ export default function WorkflowPage() {
     }
   }
 
+  const handleViewHistoricalExecution = (executionId: string, logs: any[]) => {
+    // Clear current execution state
+    setIsViewingHistory(true)
+    setHistoricalExecutionId(executionId)
+    setCurrentExecutionId(executionId)
+    setExecutionStatus('idle')
+    
+    // Process logs to extract executed and failed nodes
+    const executed = new Set<string>()
+    const failed = new Set<string>()
+    
+    logs.forEach((log: any) => {
+      // Check both type and eventType fields
+      const eventType = log.type || log.eventType || ''
+      
+      // Try to get nodeId from different possible locations
+      let nodeId = log.nodeId
+      
+      // If nodeId is not directly available, try to get it from the data field
+      if (!nodeId && log.data) {
+        nodeId = log.data.nodeId
+      }
+      
+      // For node.executed events
+      if (eventType.includes('node.executed') && nodeId) {
+        executed.add(nodeId)
+      }
+      
+      // For error/failed events
+      if ((eventType.includes('error') || eventType.includes('failed')) && nodeId) {
+        failed.add(nodeId)
+      }
+    })
+    
+    setExecutedNodes(executed)
+    setFailedNodes(failed)
+  }
+  
+  const clearHistoricalView = () => {
+    setIsViewingHistory(false)
+    setHistoricalExecutionId(null)
+    setCurrentExecutionId(null)
+    setExecutedNodes(new Set())
+    setFailedNodes(new Set())
+  }
+
   const toggleActive = async () => {
     try {
       const updated = await apiClient.updateWorkflow(tenantId, workflowId, {
@@ -349,7 +397,21 @@ export default function WorkflowPage() {
             </div>
           )}
 
-          {currentExecutionId && (
+          {isViewingHistory && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500 rounded">
+              <span className="text-sm text-purple-400">
+                📜 Viewing historical execution
+              </span>
+              <button
+                onClick={clearHistoricalView}
+                className="ml-2 px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 rounded text-xs transition"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+          
+          {currentExecutionId && !isViewingHistory && (
             <div className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500 rounded">
               <span className="text-sm text-blue-400">
                 💡 Double-click nodes to inspect execution data
@@ -438,7 +500,7 @@ export default function WorkflowPage() {
       {inspectedNode && (
         <NodeExecutionPanel
           node={inspectedNode}
-          executionId={currentExecutionId}
+          executionId={isViewingHistory ? historicalExecutionId : currentExecutionId}
           tenantId={tenantId}
           onClose={() => setInspectedNode(null)}
         />
@@ -449,6 +511,7 @@ export default function WorkflowPage() {
           workflowId={workflowId}
           tenantId={tenantId}
           onClose={() => setShowHistory(false)}
+          onSelectExecution={handleViewHistoricalExecution}
         />
       )}
     </div>

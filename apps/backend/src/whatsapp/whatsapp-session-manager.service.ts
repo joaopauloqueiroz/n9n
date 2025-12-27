@@ -44,6 +44,12 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
       (sessionId: string, contactId: string, message: string, buttonText: string, sections: any[], footer?: string) =>
         this.sendList(sessionId, contactId, message, buttonText, sections, footer)
     );
+    
+    // Register send media callback
+    this.whatsappSender.registerSendMedia(
+      (sessionId: string, contactId: string, mediaType: 'image' | 'video' | 'audio' | 'document', mediaUrl: string, options?: { caption?: string; fileName?: string; sendAudioAsVoice?: boolean }) =>
+        this.sendMedia(sessionId, contactId, mediaType, mediaUrl, options)
+    );
   }
 
   async onModuleDestroy() {
@@ -226,6 +232,82 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Send WhatsApp media (image, video, audio, document)
+   */
+  async sendMedia(
+    sessionId: string, 
+    contactId: string, 
+    mediaType: 'image' | 'video' | 'audio' | 'document',
+    mediaUrl: string,
+    options?: {
+      caption?: string;
+      fileName?: string;
+      sendAudioAsVoice?: boolean;
+    }
+  ): Promise<void> {
+    const sessionClient = this.sessions.get(sessionId);
+
+    if (!sessionClient) {
+      throw new Error('Session not found');
+    }
+
+    if (sessionClient.status !== WhatsappSessionStatus.CONNECTED) {
+      throw new Error('Session not connected');
+    }
+
+    // Format phone number for WhatsApp
+    const chatId = contactId.includes('@') ? contactId : `${contactId}@c.us`;
+
+    try {
+      const { MessageMedia } = await import('whatsapp-web.js');
+      const axios = (await import('axios')).default;
+      
+      const response = await axios.get(mediaUrl, { 
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        maxContentLength: 50 * 1024 * 1024,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
+      const contentType = response.headers['content-type'] || '';
+      const base64Data = Buffer.from(response.data).toString('base64');
+      const mimetype = contentType || this.getMimetypeForMediaType(mediaType);
+      const media = new MessageMedia(mimetype, base64Data, options?.fileName);
+
+      const sendOptions: any = { caption: options?.caption };
+      
+      if (mediaType === 'audio' && options?.sendAudioAsVoice) {
+        sendOptions.sendAudioAsVoice = true;
+      }
+
+      await sessionClient.client.sendMessage(chatId, media, sendOptions);
+    } catch (error: any) {
+      console.error(`Failed to send ${mediaType}:`, error.message);
+      throw new Error(`Failed to send ${mediaType}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get default mimetype for media type
+   */
+  private getMimetypeForMediaType(mediaType: 'image' | 'video' | 'audio' | 'document'): string {
+    switch (mediaType) {
+      case 'image':
+        return 'image/jpeg';
+      case 'video':
+        return 'video/mp4';
+      case 'audio':
+        return 'audio/mpeg';
+      case 'document':
+        return 'application/pdf';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  /**
    * Add labels to a chat
    */
   async addLabels(sessionId: string, contactId: string, labelIds: string[]): Promise<void> {
@@ -251,58 +333,35 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
           const chat = await sessionClient.client.getChatById(chatId);
           const currentLabels = (chat as any).labels || [];
           
-          // Check if label already exists
           if (currentLabels.includes(labelId)) {
-            console.log(`[ADD_LABELS] Label "${label.name}" (ID: ${labelId}) already exists on chat ${contactId}`);
             continue;
           }
           
           try {
-            // Add label to existing labels
             const updatedLabels = [...currentLabels, labelId];
-            
-            console.log(`[ADD_LABELS] chat.changeLabels available: ${typeof (chat as any).changeLabels === 'function'}`);
-            console.log(`[ADD_LABELS] Attempting to add label ${labelId} to labels: [${currentLabels.join(', ')}]`);
-            
-            // Try multiple approaches like in the reference code
             let success = false;
             
-            // Method 1: Try changeLabels (most reliable)
             if (typeof (chat as any).changeLabels === 'function') {
               try {
                 await (chat as any).changeLabels(updatedLabels);
                 success = true;
-                console.log(`[ADD_LABELS] Method 1 (changeLabels) succeeded`);
               } catch (e: any) {
-                console.log(`[ADD_LABELS] Method 1 (changeLabels) failed: ${e.message}`);
+                // Silent fail, try next method
               }
             }
             
-            // Method 2: Try addOrRemoveLabels if changeLabels failed
             if (!success) {
               try {
                 const serializedChatId = (chat as any).id._serialized || chatId;
                 await (sessionClient.client as any).addOrRemoveLabels([labelId], [serializedChatId]);
-                success = true;
-                console.log(`[ADD_LABELS] Method 2 (addOrRemoveLabels) succeeded`);
               } catch (e: any) {
-                console.log(`[ADD_LABELS] Method 2 (addOrRemoveLabels) failed: ${e.message}`);
+                // Silent fail
               }
             }
             
-            // Wait for sync
             await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Get updated chat to verify
-            const updatedChat = await sessionClient.client.getChatById(chatId);
-            const newLabels = (updatedChat as any).labels || [];
-            
-            console.log(`[ADD_LABELS] Added label "${label.name}" (ID: ${labelId}) to chat ${contactId}`);
-            console.log(`[ADD_LABELS] Labels before: [${currentLabels.join(', ')}]`);
-            console.log(`[ADD_LABELS] Labels after: [${newLabels.join(', ')}]`);
-            console.log(`[ADD_LABELS] Success: ${newLabels.includes(labelId) || newLabels.includes(String(labelId))}`);
           } catch (error: any) {
-            console.error(`[ADD_LABELS] Error adding label "${label.name}":`, error.message);
+            console.error(`Error adding label:`, error.message);
           }
         } catch (error: any) {
           console.error(`[ADD_LABELS] Error processing label "${label.name}":`, error.message);
@@ -346,45 +405,21 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
           const refreshedChat = await sessionClient.client.getChatById(chatId);
           const currentLabels = (refreshedChat as any).labels || [];
           
-          console.log(`[REMOVE_LABELS] Current labels on chat: [${currentLabels.join(', ')}]`);
-          console.log(`[REMOVE_LABELS] Trying to remove label ID: ${labelId} (type: ${typeof labelId})`);
-          console.log(`[REMOVE_LABELS] Label exists check: ${currentLabels.includes(labelId)}`);
-          console.log(`[REMOVE_LABELS] Label exists check (String): ${currentLabels.includes(String(labelId))}`);
-          
-          // Check if label exists (compare as strings)
           const labelIdStr = String(labelId);
           const hasLabel = currentLabels.some((id: string) => String(id) === labelIdStr);
           
-          if (!hasLabel) {
-            console.log(`[REMOVE_LABELS] Label "${label.name}" (ID: ${labelId}) not found on chat ${contactId}`);
-            console.log(`[REMOVE_LABELS] This might be a sync issue. Attempting removal anyway...`);
-            // Don't skip - try to remove anyway
-          }
+          const updatedLabels = hasLabel 
+            ? currentLabels.filter((id: string) => String(id) !== labelIdStr)
+            : [];
           
-          // Remove label from existing labels (compare as strings)
-          // If label not found in current list, try to remove all labels and re-add the ones we want to keep
-          let updatedLabels: string[];
-          
-          if (hasLabel) {
-            updatedLabels = currentLabels.filter((id: string) => String(id) !== labelIdStr);
-          } else {
-            // Label not in list, but might exist due to sync issues
-            // Try to get all labels except the one we want to remove
-            updatedLabels = [];
-          }
-          
-          console.log(`[REMOVE_LABELS] Updated labels will be: [${updatedLabels.join(', ')}]`);
-          
-          // Use changeLabels if available, otherwise fallback
           let success = false;
           
           if (typeof (refreshedChat as any).changeLabels === 'function') {
             try {
               await (refreshedChat as any).changeLabels(updatedLabels);
               success = true;
-              console.log(`[REMOVE_LABELS] Method 1 (changeLabels) succeeded`);
             } catch (e: any) {
-              console.log(`[REMOVE_LABELS] Method 1 (changeLabels) failed: ${e.message}`);
+              // Silent fail
             }
           }
           
@@ -392,9 +427,8 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
             try {
               await (refreshedChat as any).removeLabel(labelId);
               success = true;
-              console.log(`[REMOVE_LABELS] Method 2 (removeLabel) succeeded`);
             } catch (e: any) {
-              console.log(`[REMOVE_LABELS] Method 2 (removeLabel) failed: ${e.message}`);
+              // Silent fail
             }
           }
           
@@ -402,26 +436,14 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
             try {
               const serializedChatId = (refreshedChat as any).id._serialized || chatId;
               await (sessionClient.client as any).addOrRemoveLabels([labelId], [serializedChatId]);
-              success = true;
-              console.log(`[REMOVE_LABELS] Method 3 (addOrRemoveLabels) succeeded`);
             } catch (e: any) {
-              console.log(`[REMOVE_LABELS] Method 3 (addOrRemoveLabels) failed: ${e.message}`);
+              // Silent fail
             }
           }
           
-          // Wait for sync
           await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Get updated chat to verify
-          const updatedChat = await sessionClient.client.getChatById(chatId);
-          const newLabels = (updatedChat as any).labels || [];
-          
-          console.log(`[REMOVE_LABELS] Removed label "${label.name}" (ID: ${labelId}) from chat ${contactId}`);
-          console.log(`[REMOVE_LABELS] Labels before: [${currentLabels.join(', ')}]`);
-          console.log(`[REMOVE_LABELS] Labels after: [${newLabels.join(', ')}]`);
-          console.log(`[REMOVE_LABELS] Success: ${!newLabels.includes(labelId) && !newLabels.includes(String(labelId))}`);
         } catch (error: any) {
-          console.error(`[REMOVE_LABELS] Error removing label "${label.name}":`, error.message);
+          console.error(`Error removing label:`, error.message);
         }
       } else {
         console.warn(`[REMOVE_LABELS] Label with ID ${labelId} not found`);
@@ -456,19 +478,14 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
     const sessionClient = this.sessions.get(sessionId);
 
     if (!sessionClient) {
-      console.error('[GET_LABELS] Session not found:', sessionId);
       throw new Error('Session not found');
     }
 
     if (sessionClient.status !== WhatsappSessionStatus.CONNECTED) {
-      console.error('[GET_LABELS] Session not connected:', sessionId, sessionClient.status);
       throw new Error('Session not connected');
     }
 
-    console.log('[GET_LABELS] Fetching labels for session:', sessionId);
     const labels = await sessionClient.client.getLabels();
-    console.log('[GET_LABELS] Found labels:', labels?.length || 0, labels);
-    
     return labels || [];
   }
 

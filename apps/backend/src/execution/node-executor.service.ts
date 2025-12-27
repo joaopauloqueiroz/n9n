@@ -5,6 +5,7 @@ import {
   WorkflowNodeType,
   ExecutionContext,
   SendMessageConfig,
+  SendMediaConfig,
   SendButtonsConfig,
   SendListConfig,
   ConditionConfig,
@@ -56,6 +57,9 @@ export class NodeExecutorService {
       case WorkflowNodeType.SEND_MESSAGE:
         return this.executeSendMessage(node, context, edges, sessionId, contactId);
 
+      case WorkflowNodeType.SEND_MEDIA:
+        return this.executeSendMedia(node, context, edges, sessionId, contactId);
+
       case WorkflowNodeType.SEND_BUTTONS:
         return this.executeSendButtons(node, context, edges, sessionId, contactId);
 
@@ -81,10 +85,6 @@ export class NodeExecutorService {
         return this.executeEnd(node, context);
 
       default:
-        console.error('[NODE_EXECUTOR] Unknown node type!');
-        console.error('[NODE_EXECUTOR] Node object:', JSON.stringify(node, null, 2));
-        console.error('[NODE_EXECUTOR] Node type:', node.type);
-        console.error('[NODE_EXECUTOR] Node type (typeof):', typeof node.type);
         throw new Error(`Unknown node type: ${node.type}`);
     }
   }
@@ -123,6 +123,58 @@ export class NodeExecutorService {
         sessionId,
         contactId,
         message,
+      } : undefined,
+    };
+  }
+
+  /**
+   * Execute SEND_MEDIA node
+   */
+  private async executeSendMedia(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+    sessionId?: string,
+    contactId?: string,
+  ): Promise<NodeExecutionResult> {
+    const config = node.config as SendMediaConfig;
+
+    // Interpolate media URL and caption
+    const mediaUrl = this.contextService.interpolate(config.mediaUrl, context);
+    const caption = config.caption ? this.contextService.interpolate(config.caption, context) : undefined;
+    const fileName = config.fileName ? this.contextService.interpolate(config.fileName, context) : undefined;
+
+    // Store in output
+    this.contextService.setOutput(context, { 
+      mediaUrl, 
+      mediaType: config.mediaType,
+      caption,
+      fileName,
+      sendAudioAsVoice: config.sendAudioAsVoice,
+    });
+
+    // Add delay if configured
+    if (config.delay) {
+      await new Promise((resolve) => setTimeout(resolve, config.delay));
+    }
+
+    // Find next node
+    const nextEdge = edges.find((e) => e.source === node.id);
+    const nextNodeId = nextEdge ? nextEdge.target : null;
+
+    return {
+      nextNodeId,
+      shouldWait: false,
+      messageToSend: sessionId && contactId ? {
+        sessionId,
+        contactId,
+        media: {
+          type: config.mediaType,
+          url: mediaUrl,
+          caption,
+          fileName,
+          sendAudioAsVoice: config.sendAudioAsVoice || false,
+        },
       } : undefined,
     };
   }

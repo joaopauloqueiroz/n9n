@@ -2,6 +2,7 @@ export enum WorkflowNodeType {
   TRIGGER_MESSAGE = 'TRIGGER_MESSAGE',
   TRIGGER_SCHEDULE = 'TRIGGER_SCHEDULE',
   SEND_MESSAGE = 'SEND_MESSAGE',
+  SEND_MEDIA = 'SEND_MEDIA',
   SEND_BUTTONS = 'SEND_BUTTONS',
   SEND_LIST = 'SEND_LIST',
   HTTP_REQUEST = 'HTTP_REQUEST',
@@ -104,6 +105,15 @@ export interface TriggerScheduleConfig {
 
 export interface SendMessageConfig {
   message: string; // supports {{variables.name}} syntax
+  delay?: number; // milliseconds
+}
+
+export interface SendMediaConfig {
+  mediaType: 'image' | 'video' | 'audio' | 'document';
+  mediaUrl: string; // URL to download the media, supports {{variables.name}} syntax
+  caption?: string; // optional caption for image/video, supports {{variables.name}} syntax
+  fileName?: string; // optional filename for document, supports {{variables.name}} syntax
+  sendAudioAsVoice?: boolean; // if true and mediaType is audio, send as voice message (PTT)
   delay?: number; // milliseconds
 }
 

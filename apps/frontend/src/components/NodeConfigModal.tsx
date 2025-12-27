@@ -213,6 +213,128 @@ export default function NodeConfigModal({
           </div>
         )
 
+      case 'SEND_MEDIA':
+        return (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Tipo de Mídia
+              </label>
+              <select
+                value={config.mediaType || 'image'}
+                onChange={(e) => setConfig({ ...config, mediaType: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              >
+                <option value="image">📷 Imagem</option>
+                <option value="video">🎥 Vídeo</option>
+                <option value="audio">🎵 Áudio</option>
+                <option value="document">📄 Documento</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                URL da Mídia
+              </label>
+              <input
+                type="text"
+                value={config.mediaUrl || ''}
+                onChange={(e) => setConfig({ ...config, mediaUrl: e.target.value })}
+                placeholder="https://example.com/media.jpg"
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono text-sm"
+              />
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="text-xs text-gray-500">
+                  Use <code className="px-1.5 py-0.5 bg-gray-800 rounded text-primary">{`{{variables.imageUrl}}`}</code> para inserir variáveis
+                </span>
+              </div>
+            </div>
+
+            {(config.mediaType === 'image' || config.mediaType === 'video') && (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Legenda (opcional)
+                </label>
+                <textarea
+                  value={config.caption || ''}
+                  onChange={(e) => setConfig({ ...config, caption: e.target.value })}
+                  placeholder="Digite uma legenda para a mídia..."
+                  rows={3}
+                  className="w-full px-4 py-3 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary resize-none text-white placeholder-gray-500 font-mono text-sm"
+                />
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-xs text-gray-500">
+                    Suporta variáveis como <code className="px-1.5 py-0.5 bg-gray-800 rounded text-primary">{`{{variables.name}}`}</code>
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {config.mediaType === 'document' && (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Nome do Arquivo (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={config.fileName || ''}
+                  onChange={(e) => setConfig({ ...config, fileName: e.target.value })}
+                  placeholder="documento.pdf"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Nome que será exibido para o arquivo
+                </p>
+              </div>
+            )}
+
+            {config.mediaType === 'audio' && (
+              <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.sendAudioAsVoice || false}
+                    onChange={(e) => setConfig({ ...config, sendAudioAsVoice: e.target.checked })}
+                    className="w-4 h-4 text-primary bg-gray-700 border-gray-600 rounded focus:ring-primary focus:ring-2"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-200">
+                      🎤 Enviar como áudio de voz (PTT)
+                    </span>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      O áudio será enviado como se tivesse sido gravado na hora
+                    </p>
+                  </div>
+                </label>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Delay (ms)
+              </label>
+              <input
+                type="number"
+                value={config.delay || 0}
+                onChange={(e) => setConfig({ ...config, delay: parseInt(e.target.value) || 0 })}
+                placeholder="0"
+                min="0"
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Atraso opcional antes de enviar (em milissegundos)
+              </p>
+            </div>
+
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-xs text-blue-300 leading-relaxed">
+                💡 <strong>Dica:</strong> A mídia será baixada da URL fornecida e enviada via WhatsApp. 
+                Certifique-se de que a URL seja acessível publicamente.
+              </p>
+            </div>
+          </div>
+        )
+
       case 'SEND_BUTTONS':
         const buttons = config.buttons || []
         

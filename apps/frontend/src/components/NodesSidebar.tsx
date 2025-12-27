@@ -41,6 +41,15 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         description: 'Envia uma mensagem no WhatsApp'
       },
       {
+        type: 'SEND_MEDIA' as WorkflowNodeType,
+        label: 'Enviar Mídia',
+        icon: '📸',
+        color: 'from-lime-500 to-lime-600',
+        bgColor: 'bg-[#1a2a1e]',
+        borderColor: 'border-[#3b6d4b]',
+        description: 'Envia imagem, vídeo, áudio ou documento'
+      },
+      {
         type: 'SEND_BUTTONS' as WorkflowNodeType,
         label: 'Enviar Botões',
         icon: '🔘',

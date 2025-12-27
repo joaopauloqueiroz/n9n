@@ -7,12 +7,14 @@ interface ExecutionHistoryProps {
   workflowId: string
   tenantId: string
   onClose: () => void
+  onSelectExecution?: (executionId: string, logs: any[]) => void
 }
 
 export default function ExecutionHistory({
   workflowId,
   tenantId,
   onClose,
+  onSelectExecution,
 }: ExecutionHistoryProps) {
   const [executions, setExecutions] = useState<any[]>([])
   const [selectedExecution, setSelectedExecution] = useState<any>(null)
@@ -47,15 +49,23 @@ export default function ExecutionHistory({
     try {
       const data = await apiClient.getExecutionLogs(tenantId, executionId)
       setLogs(data)
+      return data
     } catch (error) {
       console.error('Error loading logs:', error)
       setLogs([])
+      return []
     }
   }
 
   const handleSelectExecution = async (execution: any) => {
     setSelectedExecution(execution)
-    await loadExecutionLogs(execution.id)
+    const executionLogs = await loadExecutionLogs(execution.id)
+    
+    // Notify parent component to visualize in the workflow
+    if (onSelectExecution && executionLogs) {
+      onSelectExecution(execution.id, executionLogs)
+      onClose() // Close the history modal
+    }
   }
 
   const getStatusColor = (status: string) => {

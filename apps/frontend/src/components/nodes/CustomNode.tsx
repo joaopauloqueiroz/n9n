@@ -27,6 +27,14 @@ const nodeConfig: Record<string, any> = {
     borderColor: 'border-[#3b7d3b]',
     iconBg: 'bg-gradient-to-br from-green-500 to-green-600',
   },
+  'SEND_MEDIA': {
+    label: 'Enviar Mídia',
+    subtitle: 'AÇÃO',
+    icon: '📸',
+    bgColor: 'bg-[#1a2a1e]',
+    borderColor: 'border-[#3b6d4b]',
+    iconBg: 'bg-gradient-to-br from-lime-500 to-lime-600',
+  },
   'SEND_BUTTONS': {
     label: 'Enviar Botões',
     subtitle: 'AÇÃO',
@@ -157,6 +165,23 @@ function CustomNode({ data }: CustomNodeProps) {
       } else {
         return '📨 Todas as mensagens'
       }
+    }
+    if (data.type === 'SEND_MEDIA') {
+      const mediaType = data.config.mediaType || 'image'
+      const mediaTypeLabel = {
+        image: '📷 Imagem',
+        video: '🎥 Vídeo',
+        audio: '🎵 Áudio',
+        document: '📄 Documento'
+      }[mediaType]
+      
+      if (data.config.mediaUrl) {
+        const url = data.config.mediaUrl.length > 25 
+          ? data.config.mediaUrl.substring(0, 25) + '...' 
+          : data.config.mediaUrl
+        return `${mediaTypeLabel}: ${url}`
+      }
+      return mediaTypeLabel
     }
     if (data.config.pattern) {
       return `Ao receber: ${data.config.pattern}`
