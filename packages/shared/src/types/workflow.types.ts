@@ -10,6 +10,7 @@ export enum WorkflowNodeType {
   CODE = 'CODE',
   EDIT_FIELDS = 'EDIT_FIELDS',
   MANAGE_LABELS = 'MANAGE_LABELS',
+  SET_TAGS = 'SET_TAGS',
   CONDITION = 'CONDITION',
   SWITCH = 'SWITCH',
   WAIT_REPLY = 'WAIT_REPLY',
@@ -240,5 +241,10 @@ export interface WaitConfig {
   unit: 'seconds' | 'minutes' | 'hours' | 'days';
   amount: number; // Amount of time to wait
   resumeOnMessage?: boolean; // If true, can be resumed by incoming message (like WAIT_REPLY)
+}
+
+export interface SetTagsConfig {
+  action: 'add' | 'remove' | 'set' | 'clear'; // add: adiciona tags, remove: remove tags, set: substitui todas, clear: limpa todas
+  tags: string[]; // Tags to add/remove/set
 }
 

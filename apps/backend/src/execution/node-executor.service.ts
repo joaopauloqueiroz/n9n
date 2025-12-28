@@ -16,8 +16,10 @@ import {
   ManageLabelsConfig,
   CodeConfig,
   EditFieldsConfig,
+  SetTagsConfig,
 } from '@n9n/shared';
 import { ContextService } from './context.service';
+import { ContactTagsService } from './contact-tags.service';
 
 export interface NodeExecutionResult {
   nextNodeId: string | null;
@@ -40,6 +42,7 @@ export class NodeExecutorService {
   constructor(
     private contextService: ContextService,
     private configService: ConfigService,
+    private contactTagsService: ContactTagsService,
   ) {}
 
   setWhatsappSessionManager(manager: any) {
@@ -92,6 +95,9 @@ export class NodeExecutorService {
 
       case WorkflowNodeType.WAIT:
         return this.executeWait(node, context, edges);
+
+      case WorkflowNodeType.SET_TAGS:
+        return await this.executeSetTags(node, context, edges, sessionId, contactId);
 
       case WorkflowNodeType.END:
         return this.executeEnd(node, context);
@@ -922,6 +928,97 @@ export class NodeExecutorService {
         waitStartedAt: new Date().toISOString(),
       },
     };
+  }
+
+  /**
+   * Execute SET_TAGS node - manage internal contact tags
+   */
+  private async executeSetTags(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+    sessionId?: string,
+    contactId?: string,
+  ): Promise<NodeExecutionResult> {
+    const config = node.config as SetTagsConfig;
+
+    if (!sessionId || !contactId) {
+      console.error('[SET_TAGS] Missing sessionId or contactId');
+      const nextEdge = edges.find((e) => e.source === node.id);
+      return {
+        nextNodeId: nextEdge?.target || null,
+        shouldWait: false,
+        output: { error: 'Missing sessionId or contactId' },
+      };
+    }
+
+    const tenantId = context.globals?.tenantId || 'demo-tenant';
+    let resultTags: string[] = [];
+
+    try {
+      switch (config.action) {
+        case 'add':
+          resultTags = await this.contactTagsService.addTags(
+            tenantId,
+            sessionId,
+            contactId,
+            config.tags || [],
+          );
+          console.log(`[SET_TAGS] Added tags to ${contactId}:`, config.tags);
+          break;
+
+        case 'remove':
+          resultTags = await this.contactTagsService.removeTags(
+            tenantId,
+            sessionId,
+            contactId,
+            config.tags || [],
+          );
+          console.log(`[SET_TAGS] Removed tags from ${contactId}:`, config.tags);
+          break;
+
+        case 'set':
+          resultTags = await this.contactTagsService.setTags(
+            tenantId,
+            sessionId,
+            contactId,
+            config.tags || [],
+          );
+          console.log(`[SET_TAGS] Set tags for ${contactId}:`, config.tags);
+          break;
+
+        case 'clear':
+          await this.contactTagsService.clearTags(tenantId, sessionId, contactId);
+          resultTags = [];
+          console.log(`[SET_TAGS] Cleared all tags for ${contactId}`);
+          break;
+
+        default:
+          console.error('[SET_TAGS] Unknown action:', config.action);
+      }
+
+      // Update context with new tags
+      this.contextService.setVariable(context, 'contactTags', resultTags);
+      this.contextService.setOutput(context, { contactTags: resultTags });
+
+      // Find next node
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: { contactTags: resultTags },
+      };
+    } catch (error) {
+      console.error('[SET_TAGS] Error:', error);
+      const nextEdge = edges.find((e) => e.source === node.id);
+      return {
+        nextNodeId: nextEdge?.target || null,
+        shouldWait: false,
+        output: { error: error.message, contactTags: resultTags },
+      };
+    }
   }
 }
 

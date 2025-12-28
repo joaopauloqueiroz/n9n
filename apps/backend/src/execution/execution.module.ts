@@ -4,6 +4,7 @@ import { ExecutionEngineService } from './execution-engine.service';
 import { NodeExecutorService } from './node-executor.service';
 import { ContextService } from './context.service';
 import { WhatsappSenderService } from './whatsapp-sender.service';
+import { ContactTagsService } from './contact-tags.service';
 import { ScheduleWorker } from '../worker/schedule.worker';
 
 @Global()
@@ -14,6 +15,7 @@ import { ScheduleWorker } from '../worker/schedule.worker';
     NodeExecutorService,
     ContextService,
     WhatsappSenderService,
+    ContactTagsService,
     ScheduleWorker,
   ],
   exports: [
@@ -21,6 +23,7 @@ import { ScheduleWorker } from '../worker/schedule.worker';
     ExecutionEngineService,
     NodeExecutorService,
     WhatsappSenderService,
+    ContactTagsService,
   ],
 })
 export class ExecutionModule {}

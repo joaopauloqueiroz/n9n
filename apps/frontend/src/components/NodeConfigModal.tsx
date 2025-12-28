@@ -1121,6 +1121,95 @@ export default function NodeConfigModal({
           </div>
         )
 
+      case 'SET_TAGS':
+        return (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Ação
+              </label>
+              <select
+                value={config.action || 'add'}
+                onChange={(e) => setConfig({ ...config, action: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              >
+                <option value="add">Adicionar Tags</option>
+                <option value="remove">Remover Tags</option>
+                <option value="set">Substituir Todas as Tags</option>
+                <option value="clear">Limpar Todas as Tags</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                {config.action === 'add' && 'Adiciona novas tags sem remover as existentes'}
+                {config.action === 'remove' && 'Remove apenas as tags especificadas'}
+                {config.action === 'set' && 'Substitui todas as tags pelas especificadas'}
+                {config.action === 'clear' && 'Remove todas as tags do contato'}
+              </p>
+            </div>
+
+            {config.action !== 'clear' && (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Tags
+                </label>
+                <div className="space-y-2">
+                  {(config.tags || []).map((tag: string, index: number) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={tag}
+                        onChange={(e) => {
+                          const newTags = [...(config.tags || [])]
+                          newTags[index] = e.target.value
+                          setConfig({ ...config, tags: newTags })
+                        }}
+                        placeholder="nome-da-tag"
+                        className="flex-1 px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white font-mono"
+                      />
+                      <button
+                        onClick={() => {
+                          const newTags = (config.tags || []).filter((_: string, i: number) => i !== index)
+                          setConfig({ ...config, tags: newTags })
+                        }}
+                        className="px-3 py-2 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setConfig({ ...config, tags: [...(config.tags || []), ''] })
+                    }}
+                    className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-gray-700 rounded hover:border-primary transition text-sm text-gray-400 hover:text-white"
+                  >
+                    + Adicionar Tag
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Use tags para categorizar e segmentar seus contatos (ex: "novo-lead", "interessado", "vip")
+                </p>
+              </div>
+            )}
+
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">🏷️</span>
+                <div className="flex-1">
+                  <p className="text-sm text-purple-300 font-medium mb-2">
+                    Tags Internas
+                  </p>
+                  <p className="text-xs text-purple-200/80 mb-2">
+                    As tags são armazenadas internamente e ficam disponíveis em todos os nodes através da variável <code className="bg-purple-500/20 px-1 py-0.5 rounded">contactTags</code>.
+                  </p>
+                  <p className="text-xs text-purple-200/80">
+                    Use em condições: <code className="bg-purple-500/20 px-1 py-0.5 rounded">contactTags.includes("vip")</code>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+
       case 'WAIT':
         return (
           <div className="space-y-6">

@@ -104,6 +104,15 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         description: 'Adiciona, modifica ou remove campos dos dados'
       },
       {
+        type: 'SET_TAGS' as WorkflowNodeType,
+        label: 'Gerenciar Tags',
+        icon: '🏷️',
+        color: 'from-purple-500 to-purple-600',
+        bgColor: 'bg-[#2a1a2e]',
+        borderColor: 'border-[#6b3b7d]',
+        description: 'Adiciona ou remove tags internas do contato'
+      },
+      {
         type: 'MANAGE_LABELS' as WorkflowNodeType,
         label: 'Gerenciar Etiquetas',
         icon: '🏷️',

@@ -13,6 +13,7 @@ import { EventBusService } from '../event-bus/event-bus.service';
 import { ExecutionService } from './execution.service';
 import { NodeExecutorService } from './node-executor.service';
 import { WhatsappSenderService } from './whatsapp-sender.service';
+import { ContactTagsService } from './contact-tags.service';
 
 @Injectable()
 export class ExecutionEngineService {
@@ -23,6 +24,7 @@ export class ExecutionEngineService {
     private executionService: ExecutionService,
     private nodeExecutor: NodeExecutorService,
     private whatsappSender: WhatsappSenderService,
+    private contactTagsService: ContactTagsService,
   ) {}
 
   /**
@@ -84,6 +86,13 @@ export class ExecutionEngineService {
         throw new Error('Workflow has no trigger node');
       }
 
+      // Load contact tags
+      const contactTags = await this.contactTagsService.getTags(
+        tenantId,
+        sessionId,
+        contactId,
+      );
+
       // Create execution
       const execution = await this.executionService.createExecution(
         tenantId,
@@ -93,6 +102,7 @@ export class ExecutionEngineService {
         {
           variables: {
             triggerMessage: triggerMessage || '',
+            contactTags, // Make tags available in all nodes
           },
         },
       );

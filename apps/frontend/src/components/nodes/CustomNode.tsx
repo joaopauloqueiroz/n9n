@@ -92,6 +92,14 @@ const nodeConfig: Record<string, any> = {
     borderColor: 'border-[#3b6b6b]',
     iconBg: 'bg-gradient-to-br from-teal-500 to-teal-600',
   },
+  'SET_TAGS': {
+    label: 'Gerenciar Tags',
+    subtitle: 'AÇÃO',
+    icon: '🏷️',
+    bgColor: 'bg-[#2a1a2e]',
+    borderColor: 'border-[#6b3b7d]',
+    iconBg: 'bg-gradient-to-br from-purple-500 to-purple-600',
+  },
   'CONDITION': {
     label: 'Condição',
     subtitle: 'LÓGICA',
@@ -214,30 +222,31 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
     if (data.type === 'WAIT') {
       const amount = data.config.amount || 1
       const unit = data.config.unit || 'seconds'
-      const unitLabel = {
+      const unitLabel: Record<string, string> = {
         seconds: 'segundo(s)',
         minutes: 'minuto(s)',
         hours: 'hora(s)',
         days: 'dia(s)',
-      }[unit] || unit
-      return `⏱️ Aguardar ${amount} ${unitLabel}`
+      }
+      return `⏱️ Aguardar ${amount} ${unitLabel[unit] || unit}`
     }
     if (data.type === 'SEND_MEDIA') {
       const mediaType = data.config.mediaType || 'image'
-      const mediaTypeLabel = {
+      const mediaTypeLabel: Record<string, string> = {
         image: '📷 Imagem',
         video: '🎥 Vídeo',
         audio: '🎵 Áudio',
         document: '📄 Documento'
-      }[mediaType]
+      }
+      const label = mediaTypeLabel[mediaType]
       
       if (data.config.mediaUrl) {
         const url = data.config.mediaUrl.length > 25 
           ? data.config.mediaUrl.substring(0, 25) + '...' 
           : data.config.mediaUrl
-        return `${mediaTypeLabel}: ${url}`
+        return `${label}: ${url}`
       }
-      return mediaTypeLabel
+      return label
     }
     if (data.config.pattern) {
       return `Ao receber: ${data.config.pattern}`
@@ -270,6 +279,30 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
         return '📝 Modo JSON'
       }
       return `✏️ ${count} campo${count !== 1 ? 's' : ''}`
+    }
+    if (data.type === 'SET_TAGS') {
+      const action = data.config.action || 'add'
+      const tags = data.config.tags || []
+      const actionLabels: Record<string, string> = {
+        add: '➕ Adicionar',
+        remove: '➖ Remover',
+        set: '🔄 Substituir',
+        clear: '🗑️ Limpar todas'
+      }
+      const actionLabel = actionLabels[action]
+      
+      if (action === 'clear') {
+        return actionLabel
+      }
+      
+      const count = tags.length
+      if (count === 0) {
+        return `${actionLabel} (nenhuma tag)`
+      }
+      if (count === 1) {
+        return `${actionLabel}: ${tags[0]}`
+      }
+      return `${actionLabel} ${count} tags`
     }
     return null
   }
