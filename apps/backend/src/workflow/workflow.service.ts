@@ -1,10 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType } from '@n9n/shared';
+import { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType, TriggerManualConfig } from '@n9n/shared';
+import { ExecutionEngineService } from '../execution/execution-engine.service';
 
 @Injectable()
 export class WorkflowService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => ExecutionEngineService))
+    private executionEngine: ExecutionEngineService,
+  ) {}
 
   /**
    * Create workflow
@@ -181,6 +186,68 @@ export class WorkflowService {
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     };
+  }
+
+  /**
+   * Trigger manual execution of a workflow
+   */
+  async triggerManualExecution(
+    tenantId: string,
+    workflowId: string,
+    nodeId: string,
+  ): Promise<{ executionId: string }> {
+    // Get the workflow
+    const workflow = await this.getWorkflow(tenantId, workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow ${workflowId} not found`);
+    }
+
+    // Find the trigger node
+    const triggerNode = workflow.nodes.find((n) => n.id === nodeId);
+    if (!triggerNode || triggerNode.type !== WorkflowNodeType.TRIGGER_MANUAL) {
+      throw new Error(`Trigger node ${nodeId} not found or is not a TRIGGER_MANUAL node`);
+    }
+
+    const config = triggerNode.config as TriggerManualConfig;
+
+    // Find a WhatsApp session to use
+    let sessionId: string;
+    if (config.sessionId) {
+      // Use the configured session
+      const session = await this.prisma.whatsappSession.findUnique({
+        where: { id: config.sessionId, tenantId },
+      });
+      if (!session || session.status !== 'CONNECTED') {
+        throw new Error(`Configured session ${config.sessionId} is not connected`);
+      }
+      sessionId = session.id;
+    } else {
+      // Find the first connected session
+      const session = await this.prisma.whatsappSession.findFirst({
+        where: { tenantId, status: 'CONNECTED' },
+      });
+      if (!session) {
+        throw new Error('No connected WhatsApp session found');
+      }
+      sessionId = session.id;
+    }
+
+    // Generate a unique contact ID for this manual execution
+    const timestamp = Date.now();
+    const contactId = `manual-${workflowId}-${timestamp}`;
+
+    // Start execution
+    const executionId = await this.executionEngine.startExecution(
+      tenantId,
+      workflowId,
+      sessionId,
+      contactId,
+      undefined, // no trigger message for manual executions
+    );
+
+    console.log(`[MANUAL TRIGGER] Started execution ${executionId} for workflow ${workflowId}`);
+
+    return { executionId };
   }
 }
 

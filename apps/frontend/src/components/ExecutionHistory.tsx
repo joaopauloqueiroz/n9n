@@ -28,15 +28,8 @@ export default function ExecutionHistory({
   const loadExecutions = async () => {
     try {
       setLoading(true)
-      // For now, we'll need to add an endpoint to get executions by workflow
-      // This is a placeholder - you'll need to implement the backend endpoint
-      const response = await fetch(
-        `http://localhost:3001/api/workflows/${workflowId}/executions?tenantId=${tenantId}`
-      )
-      if (response.ok) {
-        const data = await response.json()
-        setExecutions(data)
-      }
+      const data = await apiClient.getWorkflowExecutions(tenantId, workflowId)
+      setExecutions(data)
     } catch (error) {
       console.error('Error loading executions:', error)
       setExecutions([])

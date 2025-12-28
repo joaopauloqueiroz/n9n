@@ -42,4 +42,8 @@ pnpm-debug.log*
 *.db
 *.sqlite
 
+# Ngrok
+ngrok.yml
+*.ngrok.yml
+
 

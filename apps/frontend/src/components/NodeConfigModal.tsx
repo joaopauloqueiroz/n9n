@@ -1,14 +1,166 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { WorkflowNode, WorkflowNodeType } from '@n9n/shared'
 import { apiClient } from '@/lib/api-client'
+import Editor from '@monaco-editor/react'
 
 interface NodeConfigModalProps {
   node: WorkflowNode | null
   tenantId: string
   onClose: () => void
   onSave: (nodeId: string, config: any) => void
+  embedded?: boolean
+}
+
+// Editor de código Monaco (VS Code)
+function CodeEditor({ value, onChange, language = 'javascript' }: any) {
+  const handleEditorChange = (newValue: string | undefined) => {
+    onChange({ target: { value: newValue || '' } })
+  }
+
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    // Adicionar snippets customizados
+    monaco.languages.registerCompletionItemProvider(language, {
+      provideCompletionItems: () => {
+        const suggestions = [
+          {
+            label: 'map',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'map((item) => {\n\t${1:return item}\n})',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            documentation: 'Array map function',
+          },
+          {
+            label: 'filter',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'filter((item) => ${1:item.condition})',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            documentation: 'Array filter function',
+          },
+          {
+            label: 'reduce',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'reduce((acc, item) => {\n\t${1:return acc}\n}, ${2:initialValue})',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            documentation: 'Array reduce function',
+          },
+          {
+            label: 'forEach',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'forEach((item) => {\n\t${1:// code}\n})',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            documentation: 'Array forEach function',
+          },
+          {
+            label: 'find',
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertText: 'find((item) => ${1:item.condition})',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            documentation: 'Array find function',
+          },
+          {
+            label: 'variables.',
+            kind: monaco.languages.CompletionItemKind.Variable,
+            insertText: 'variables.${1:variableName}',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            documentation: 'Access context variables',
+          },
+        ]
+        return { suggestions }
+      },
+    })
+  }
+
+  return (
+    <Editor
+      height="400px"
+      language={language}
+      value={value || ''}
+      onChange={handleEditorChange}
+      onMount={handleEditorDidMount}
+      theme="vs-dark"
+      options={{
+        minimap: { enabled: false },
+        fontSize: 13,
+        lineNumbers: 'on',
+        roundedSelection: true,
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        tabSize: 2,
+        wordWrap: 'on',
+        suggest: {
+          snippetsPreventQuickSuggestions: false,
+        },
+        quickSuggestions: {
+          other: true,
+          comments: false,
+          strings: true,
+        },
+      }}
+    />
+  )
+}
+
+// Input com suporte a drag-and-drop
+function DroppableInput({ value, onChange, placeholder, className, type = 'text' }: any) {
+  const [isDragOver, setIsDragOver] = useState(false)
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+    const droppedText = e.dataTransfer.getData('text/plain')
+    
+    console.log('[DroppableInput] Dropped text:', droppedText)
+    console.log('[DroppableInput] Current value:', value)
+    
+    // Inserir no cursor ou no final
+    if (inputRef.current) {
+      const input = inputRef.current
+      const start = input.selectionStart || 0
+      const end = input.selectionEnd || 0
+      const currentValue = value || ''
+      const newValue = currentValue.substring(0, start) + droppedText + currentValue.substring(end)
+      
+      console.log('[DroppableInput] New value:', newValue)
+      
+      onChange({ target: { value: newValue } })
+      
+      // Reposicionar cursor
+      setTimeout(() => {
+        input.focus()
+        input.setSelectionRange(start + droppedText.length, start + droppedText.length)
+      }, 0)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragOver(false)
+  }
+
+  const Component = type === 'textarea' ? 'textarea' : 'input'
+
+  return (
+    <Component
+      ref={inputRef as any}
+      type={type === 'textarea' ? undefined : type}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      className={`${className} ${isDragOver ? 'ring-2 ring-primary bg-primary/10' : ''}`}
+      style={type === 'textarea' ? { minHeight: '100px' } : undefined}
+    />
+  )
 }
 
 export default function NodeConfigModal({
@@ -16,6 +168,7 @@ export default function NodeConfigModal({
   tenantId,
   onClose,
   onSave,
+  embedded = false,
 }: NodeConfigModalProps) {
   const [activeTab, setActiveTab] = useState<'parameters' | 'settings'>('parameters')
   const [config, setConfig] = useState<any>({})
@@ -23,13 +176,15 @@ export default function NodeConfigModal({
   const [loading, setLoading] = useState(false)
   const [availableLabels, setAvailableLabels] = useState<any[]>([])
   const [loadingLabels, setLoadingLabels] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
 
   useEffect(() => {
     if (node) {
       setConfig(node.config || {})
       
       // Load sessions if it's a trigger node or manage labels node
-      if (node.type === WorkflowNodeType.TRIGGER_MESSAGE || node.type === 'MANAGE_LABELS') {
+      if (node.type === WorkflowNodeType.TRIGGER_MESSAGE || node.type === WorkflowNodeType.TRIGGER_SCHEDULE || node.type === 'TRIGGER_MANUAL' || node.type === 'MANAGE_LABELS') {
         loadSessions()
       }
     }
@@ -85,10 +240,24 @@ export default function NodeConfigModal({
     }
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (node) {
-      onSave(node.id, config)
-      onClose()
+      setSaving(true)
+      try {
+        await onSave(node.id, config)
+        setSaveSuccess(true)
+        
+        // Mostrar feedback de sucesso por 2 segundos
+        setTimeout(() => {
+          setSaveSuccess(false)
+          if (!embedded) {
+            onClose()
+          }
+        }, 2000)
+      } catch (error) {
+        console.error('Error saving:', error)
+        setSaving(false)
+      }
     }
   }
 
@@ -168,6 +337,184 @@ export default function NodeConfigModal({
                 💡 <strong>Dica:</strong> Se você deixar o padrão vazio, este workflow será acionado para <strong>todas as mensagens</strong> recebidas. 
                 Isso é útil para criar um chatbot que responde a qualquer mensagem. 
                 Se você definir um padrão, apenas mensagens que correspondam serão processadas.
+              </p>
+            </div>
+          </div>
+        )
+
+      case 'TRIGGER_MANUAL':
+        return (
+          <div className="space-y-6">
+            <div className="bg-[#1a2a1a] border border-green-700/30 rounded-lg p-6">
+              <div className="flex items-start gap-4">
+                <div className="text-4xl">▶️</div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    Trigger Manual
+                  </h3>
+                  <p className="text-sm text-gray-300 mb-4">
+                    Este workflow será executado manualmente através de um botão de "Start" no canvas.
+                    Ideal para testes e execuções sob demanda.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                WhatsApp Session
+              </label>
+              <select
+                value={config.sessionId || ''}
+                onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                disabled={loading}
+              >
+                <option value="">Primeira sessão disponível</option>
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.name} ({session.phoneNumber})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Sessão WhatsApp que será usada para executar o workflow
+              </p>
+            </div>
+
+            <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">
+                Dados de Teste (Opcional)
+              </h3>
+              <p className="text-xs text-gray-400 mb-3">
+                Você pode definir dados iniciais que estarão disponíveis em <code className="text-primary">variables</code> durante a execução.
+              </p>
+              <textarea
+                value={config.testData ? JSON.stringify(config.testData, null, 2) : ''}
+                onChange={(e) => {
+                  try {
+                    const parsed = e.target.value ? JSON.parse(e.target.value) : {}
+                    setConfig({ ...config, testData: parsed })
+                  } catch (err) {
+                    // Invalid JSON, keep current
+                  }
+                }}
+                placeholder={'{\n  "userName": "João",\n  "userId": "123"\n}'}
+                rows={6}
+                className="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary resize-none text-white placeholder-gray-500 font-mono text-sm"
+              />
+            </div>
+          </div>
+        )
+
+      case 'TRIGGER_SCHEDULE':
+        return (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                WhatsApp Session
+              </label>
+              <select
+                value={config.sessionId || ''}
+                onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                disabled={loading}
+              >
+                <option value="">Primeira sessão disponível</option>
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.name} ({session.phoneNumber})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Sessão WhatsApp que será usada para executar o workflow
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Tipo de Agendamento
+              </label>
+              <select
+                value={config.scheduleType || 'cron'}
+                onChange={(e) => setConfig({ ...config, scheduleType: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              >
+                <option value="cron">Expressão Cron</option>
+                <option value="interval">Intervalo</option>
+              </select>
+            </div>
+
+            {config.scheduleType === 'cron' ? (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Expressão Cron
+                </label>
+                <input
+                  type="text"
+                  value={config.cronExpression || ''}
+                  onChange={(e) => setConfig({ ...config, cronExpression: e.target.value })}
+                  placeholder="*/5 * * * *"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Formato: minuto hora dia mês dia-da-semana
+                </p>
+                
+                {/* Cron Examples */}
+                <div className="mt-4 bg-[#1a1a1a] border border-gray-700 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-200 mb-3">Exemplos:</h4>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-800 rounded text-primary font-mono">*/5 * * * *</code>
+                      <span className="text-gray-400">A cada 5 minutos</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-800 rounded text-primary font-mono">0 9 * * *</code>
+                      <span className="text-gray-400">Todos os dias às 9h</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-800 rounded text-primary font-mono">0 9 * * 1</code>
+                      <span className="text-gray-400">Toda segunda-feira às 9h</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-800 rounded text-primary font-mono">0 0 1 * *</code>
+                      <span className="text-gray-400">Todo dia 1 do mês à meia-noite</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-gray-800 rounded text-primary font-mono">0 */2 * * *</code>
+                      <span className="text-gray-400">A cada 2 horas</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Intervalo (em minutos)
+                </label>
+                <input
+                  type="number"
+                  value={config.intervalMinutes || 5}
+                  onChange={(e) => setConfig({ ...config, intervalMinutes: parseInt(e.target.value) || 5 })}
+                  placeholder="5"
+                  min="1"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  O workflow será executado a cada {config.intervalMinutes || 5} minuto(s)
+                </p>
+              </div>
+            )}
+
+            {/* Info Box */}
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3">
+              <p className="text-xs text-purple-300 leading-relaxed">
+                ⏰ <strong>Agendamento:</strong> Este workflow será executado automaticamente de acordo com o agendamento configurado.
+                {config.scheduleType === 'cron' 
+                  ? ' Use expressões cron para controle preciso de horários.'
+                  : ' O workflow será executado em intervalos regulares.'}
               </p>
             </div>
           </div>
@@ -1376,6 +1723,259 @@ export default function NodeConfigModal({
           </div>
         )
 
+      case 'EDIT_FIELDS':
+        return (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Modo
+              </label>
+              <select
+                value={config.mode || 'fields'}
+                onChange={(e) => setConfig({ ...config, mode: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              >
+                <option value="fields">Campos (Visual)</option>
+                <option value="json">JSON</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Escolha como deseja definir os campos
+              </p>
+            </div>
+
+            {config.mode === 'json' ? (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  JSON
+                </label>
+                <textarea
+                  value={config.jsonData || ''}
+                  onChange={(e) => setConfig({ ...config, jsonData: e.target.value })}
+                  placeholder={`{\n  "my_field_1": "value",\n  "my_field_2": 1\n}`}
+                  rows={12}
+                  className="w-full px-4 py-3 bg-[#0d0d0d] border border-gray-700 rounded focus:outline-none focus:border-primary resize-none text-white placeholder-gray-600 font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Defina os campos em formato JSON. Suporta variáveis: {`{{variables.name}}`}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-200">
+                      Campos
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const operations = config.operations || []
+                        setConfig({
+                          ...config,
+                          operations: [
+                            ...operations,
+                            {
+                              id: `field-${Date.now()}`,
+                              name: '',
+                              value: '',
+                              type: 'string'
+                            }
+                          ]
+                        })
+                      }}
+                      className="px-3 py-1.5 bg-primary text-black text-sm font-medium rounded hover:bg-primary/90 transition"
+                    >
+                      + Adicionar Campo
+                    </button>
+                  </div>
+
+                  {(!config.operations || config.operations.length === 0) && (
+                    <div className="text-center py-8 text-gray-500 border-2 border-dashed border-gray-700 rounded-lg">
+                      <p className="text-sm">Nenhum campo adicionado</p>
+                      <p className="text-xs mt-1">Clique em "Adicionar Campo" para começar</p>
+                    </div>
+                  )}
+
+                  {config.operations && config.operations.map((operation: any, index: number) => (
+                    <div key={operation.id} className="bg-[#151515] border border-gray-700 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-gray-400">Campo {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const operations = config.operations.filter((_: any, i: number) => i !== index)
+                            setConfig({ ...config, operations })
+                          }}
+                          className="text-red-400 hover:text-red-300 text-xs"
+                        >
+                          ✕ Remover
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5 text-gray-300">
+                            Nome do Campo
+                          </label>
+                          <input
+                            type="text"
+                            value={operation.name || ''}
+                            onChange={(e) => {
+                              const operations = [...config.operations]
+                              operations[index] = { ...operations[index], name: e.target.value }
+                              setConfig({ ...config, operations })
+                            }}
+                            placeholder="meu_campo"
+                            className="w-full px-3 py-2 bg-[#0d0d0d] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-600 text-sm font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5 text-gray-300">
+                            Tipo
+                          </label>
+                          <select
+                            value={operation.type || 'string'}
+                            onChange={(e) => {
+                              const operations = [...config.operations]
+                              operations[index] = { ...operations[index], type: e.target.value }
+                              setConfig({ ...config, operations })
+                            }}
+                            className="w-full px-3 py-2 bg-[#0d0d0d] border border-gray-700 rounded focus:outline-none focus:border-primary text-white text-sm"
+                          >
+                            <option value="string">String</option>
+                            <option value="number">Number</option>
+                            <option value="boolean">Boolean</option>
+                            <option value="json">JSON</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5 text-gray-300">
+                          Valor
+                        </label>
+                        <DroppableInput
+                          type="text"
+                          value={operation.value || ''}
+                          onChange={(e: any) => {
+                            const operations = [...config.operations]
+                            operations[index] = { ...operations[index], value: e.target.value }
+                            setConfig({ ...config, operations })
+                          }}
+                          placeholder={`valor ou {{variables.nome}}`}
+                          className="w-full px-3 py-2 bg-[#0d0d0d] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-600 text-sm font-mono"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Use {`{{variables.campo}}`} para referenciar variáveis
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.includeOtherFields !== false}
+                      onChange={(e) => setConfig({ ...config, includeOtherFields: e.target.checked })}
+                      className="w-4 h-4 text-primary bg-gray-700 border-gray-600 rounded focus:ring-primary focus:ring-2"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-200">
+                        Incluir outros campos do input
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Mantém os campos do input que não foram explicitamente definidos
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
+        )
+
+      case 'CODE':
+        return (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Modo de Execução
+              </label>
+              <select
+                value={config.mode || 'runOnceForAllItems'}
+                onChange={(e) => setConfig({ ...config, mode: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              >
+                <option value="runOnceForAllItems">Executar uma vez para todos os itens</option>
+                <option value="runOnceForEachItem">Executar uma vez para cada item</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                {config.mode === 'runOnceForEachItem' 
+                  ? 'O código será executado separadamente para cada item de entrada'
+                  : 'O código será executado uma única vez com todos os itens'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Código JavaScript
+              </label>
+              <div className="bg-[#1e1e1e] border border-gray-700 rounded overflow-hidden">
+                <CodeEditor
+                  value={config.code || ''}
+                  onChange={(e: any) => setConfig({ ...config, code: e.target.value })}
+                  language="javascript"
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-gray-500">
+                  Use <code className="px-1.5 py-0.5 bg-gray-800 rounded text-primary font-mono">variables</code> para acessar variáveis do contexto
+                </span>
+              </div>
+            </div>
+
+            {/* Help Text */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-blue-300 mb-2">💡 Como usar:</h4>
+              <ul className="text-xs text-blue-300 space-y-1.5 leading-relaxed">
+                <li>• Acesse variáveis com <code className="bg-blue-500/20 px-1 py-0.5 rounded font-mono">variables.nomeVariavel</code></li>
+                <li>• Use <code className="bg-blue-500/20 px-1 py-0.5 rounded font-mono">return {'{ }'}</code> para definir o output</li>
+                <li>• O output será salvo em <code className="bg-blue-500/20 px-1 py-0.5 rounded font-mono">variables.codeOutput</code></li>
+                <li>• Suporta JavaScript ES6+ (arrow functions, destructuring, etc)</li>
+              </ul>
+            </div>
+
+            {/* Examples */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-gray-300 mb-3">📝 Exemplos:</h4>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Transformar dados HTTP:</p>
+                  <pre className="text-xs bg-black/50 p-2 rounded text-gray-300 font-mono overflow-x-auto">
+{`const data = variables.httpResponse.body;
+return {
+  title: data.title.toUpperCase(),
+  isComplete: data.completed
+};`}
+                  </pre>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Filtrar array:</p>
+                  <pre className="text-xs bg-black/50 p-2 rounded text-gray-300 font-mono overflow-x-auto">
+{`const items = variables.items || [];
+return {
+  filtered: items.filter(i => i.active)
+};`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+
       default:
         return (
           <div className="text-center py-8">
@@ -1387,6 +1987,81 @@ export default function NodeConfigModal({
     }
   }
 
+  // Embedded mode: render only the content without modal wrapper
+  if (embedded) {
+    return (
+      <div className="h-full flex flex-col bg-[#111111]">
+        {/* Tabs */}
+        <div className="flex border-b border-gray-800 bg-[#0d0d0d]">
+          <button
+            onClick={() => setActiveTab('parameters')}
+            className={`px-3 py-1.5 text-[11px] font-medium transition relative ${
+              activeTab === 'parameters'
+                ? 'text-white'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Parameters
+            {activeTab === 'parameters' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`px-3 py-1.5 text-[11px] font-medium transition relative ${
+              activeTab === 'settings'
+                ? 'text-white'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Settings
+            {activeTab === 'settings' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
+            )}
+          </button>
+        </div>
+
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-3">
+            {activeTab === 'parameters' ? renderConfigFields() : (
+              <div className="space-y-3">
+                <div className="text-xs text-gray-400">
+                  <p>Additional settings for this node.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Save Button - Fixed at bottom */}
+        <div className="flex-shrink-0 p-3 border-t border-gray-800 bg-[#0d0d0d]">
+          <button
+            onClick={handleSave}
+            disabled={saving || saveSuccess}
+            className={`w-full px-4 py-2 rounded text-xs font-semibold transition flex items-center justify-center gap-2 ${
+              saveSuccess 
+                ? 'bg-green-500 text-white' 
+                : saving 
+                  ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                  : 'bg-primary text-black hover:bg-primary/90'
+            }`}
+          >
+            {saving && (
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            )}
+            {saveSuccess && '✓ Salvo com sucesso!'}
+            {!saving && !saveSuccess && 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Normal modal mode
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="bg-[#1a1a1a] border border-gray-700 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -1466,14 +2141,29 @@ export default function NodeConfigModal({
           <button
             onClick={onClose}
             className="px-6 py-2 text-sm font-medium text-gray-300 hover:text-white transition"
+            disabled={saving}
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
-            className="px-8 py-2 bg-primary text-black rounded font-semibold hover:bg-primary/90 transition shadow-lg"
+            disabled={saving || saveSuccess}
+            className={`px-8 py-2 rounded font-semibold transition shadow-lg flex items-center gap-2 ${
+              saveSuccess 
+                ? 'bg-green-500 text-white' 
+                : saving 
+                  ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                  : 'bg-primary text-black hover:bg-primary/90'
+            }`}
           >
-            Salvar
+            {saving && (
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            )}
+            {saveSuccess && '✓ Salvo!'}
+            {!saving && !saveSuccess && 'Salvar'}
           </button>
         </div>
       </div>

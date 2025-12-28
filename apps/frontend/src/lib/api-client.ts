@@ -83,5 +83,19 @@ export const apiClient = {
     const { data } = await client.get(`/api/executions/${executionId}/logs?tenantId=${tenantId}`)
     return data
   },
+
+  getWorkflowExecutions: async (tenantId: string, workflowId: string) => {
+    const { data } = await client.get(`/api/workflows/${workflowId}/executions?tenantId=${tenantId}`)
+    return data
+  },
+
+  // Manual Trigger
+  triggerManualExecution: async (tenantId: string, workflowId: string, nodeId: string) => {
+    const { data } = await client.post(`/api/workflows/${workflowId}/trigger-manual`, {
+      tenantId,
+      nodeId,
+    })
+    return data
+  },
 }
 

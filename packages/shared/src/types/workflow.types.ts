@@ -1,11 +1,14 @@
 export enum WorkflowNodeType {
   TRIGGER_MESSAGE = 'TRIGGER_MESSAGE',
   TRIGGER_SCHEDULE = 'TRIGGER_SCHEDULE',
+  TRIGGER_MANUAL = 'TRIGGER_MANUAL',
   SEND_MESSAGE = 'SEND_MESSAGE',
   SEND_MEDIA = 'SEND_MEDIA',
   SEND_BUTTONS = 'SEND_BUTTONS',
   SEND_LIST = 'SEND_LIST',
   HTTP_REQUEST = 'HTTP_REQUEST',
+  CODE = 'CODE',
+  EDIT_FIELDS = 'EDIT_FIELDS',
   MANAGE_LABELS = 'MANAGE_LABELS',
   CONDITION = 'CONDITION',
   SWITCH = 'SWITCH',
@@ -99,7 +102,10 @@ export interface TriggerMessageConfig {
 }
 
 export interface TriggerScheduleConfig {
-  cronExpression: string;
+  scheduleType: 'cron' | 'interval';
+  cronExpression?: string; // for cron type
+  intervalMinutes?: number; // for interval type
+  sessionId?: string; // WhatsApp session to use for execution
   timezone?: string;
 }
 
@@ -201,5 +207,30 @@ export interface ManageLabelsConfig {
   labelIds?: string[]; // IDs of labels to add/remove
   labelNames?: string[]; // Names of labels to add/remove (will be created if don't exist)
   saveLabelsAs?: string; // variable name to save current labels, default 'chatLabels'
+}
+
+export interface CodeConfig {
+  mode: 'runOnceForAllItems' | 'runOnceForEachItem';
+  code: string; // JavaScript code to execute
+  language?: 'javascript' | 'python'; // Future: support multiple languages
+}
+
+export interface TriggerManualConfig {
+  sessionId?: string; // Optional: specific WhatsApp session to use
+  testData?: Record<string, any>; // Optional: test data to inject into context
+}
+
+export interface EditFieldsOperation {
+  id: string;
+  name: string; // Field name
+  value: string; // Field value (supports {{variables.name}} syntax)
+  type?: 'string' | 'number' | 'boolean' | 'json';
+}
+
+export interface EditFieldsConfig {
+  mode: 'json' | 'fields'; // JSON mode or visual fields mode
+  jsonData?: string; // For JSON mode
+  operations: EditFieldsOperation[]; // For fields mode
+  includeOtherFields?: boolean; // Include fields from input that aren't explicitly set
 }
 

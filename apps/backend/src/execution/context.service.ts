@@ -78,10 +78,40 @@ export class ContextService {
   }
 
   /**
-   * Get value by path (e.g., "variables.user.name")
+   * Get value by path (e.g., "variables.user.name" or "user.name")
+   * If path doesn't start with a known root (variables, globals, input, output),
+   * it will try to find it in variables first, then in other places
    */
   private getValueByPath(obj: any, path: string): any {
-    return path.split('.').reduce((current, key) => current?.[key], obj);
+    const parts = path.split('.');
+    const firstPart = parts[0];
+    
+    // If path starts with a known root, use it directly
+    if (['variables', 'globals', 'input', 'output'].includes(firstPart)) {
+      return parts.reduce((current, key) => current?.[key], obj);
+    }
+    
+    // Otherwise, try to find in variables first
+    const valueInVariables = parts.reduce((current, key) => current?.[key], obj.variables);
+    if (valueInVariables !== undefined) {
+      return valueInVariables;
+    }
+    
+    // Then try in output
+    const valueInOutput = parts.reduce((current, key) => current?.[key], obj.output);
+    if (valueInOutput !== undefined) {
+      return valueInOutput;
+    }
+    
+    // Then try in input
+    const valueInInput = parts.reduce((current, key) => current?.[key], obj.input);
+    if (valueInInput !== undefined) {
+      return valueInInput;
+    }
+    
+    // Finally try in globals
+    const valueInGlobals = parts.reduce((current, key) => current?.[key], obj.globals);
+    return valueInGlobals;
   }
 }
 

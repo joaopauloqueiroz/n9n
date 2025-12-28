@@ -20,6 +20,14 @@ const nodeConfig: Record<string, any> = {
     borderColor: 'border-[#7b5998]',
     iconBg: 'bg-gradient-to-br from-purple-500 to-purple-600',
   },
+  'TRIGGER_MANUAL': {
+    label: 'Manual',
+    subtitle: 'TRIGGER',
+    icon: '▶️',
+    bgColor: 'bg-[#1a2a1a]',
+    borderColor: 'border-[#3b7d3b]',
+    iconBg: 'bg-gradient-to-br from-green-500 to-green-600',
+  },
   'SEND_MESSAGE': {
     label: 'Enviar Mensagem',
     subtitle: 'AÇÃO',
@@ -67,6 +75,22 @@ const nodeConfig: Record<string, any> = {
     bgColor: 'bg-[#2e1a2a]',
     borderColor: 'border-[#7d3b5b]',
     iconBg: 'bg-gradient-to-br from-pink-500 to-pink-600',
+  },
+  'CODE': {
+    label: 'Code',
+    subtitle: 'TRANSFORMAÇÃO',
+    icon: '{}',
+    bgColor: 'bg-[#1a1a2e]',
+    borderColor: 'border-[#3b3b7d]',
+    iconBg: 'bg-gradient-to-br from-purple-500 to-purple-600',
+  },
+  'EDIT_FIELDS': {
+    label: 'Edit Fields',
+    subtitle: 'TRANSFORMAÇÃO',
+    icon: '✏️',
+    bgColor: 'bg-[#1a2a2a]',
+    borderColor: 'border-[#3b6b6b]',
+    iconBg: 'bg-gradient-to-br from-teal-500 to-teal-600',
   },
   'CONDITION': {
     label: 'Condição',
@@ -128,7 +152,8 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
 
   const isTrigger =
     data.type === 'TRIGGER_MESSAGE' ||
-    data.type === 'TRIGGER_SCHEDULE'
+    data.type === 'TRIGGER_SCHEDULE' ||
+    data.type === 'TRIGGER_MANUAL'
 
   const isEnd = data.type === 'END'
   const isCondition = data.type === 'CONDITION'
@@ -175,6 +200,9 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
         return '📨 Todas as mensagens'
       }
     }
+    if (data.type === 'TRIGGER_MANUAL') {
+      return '▶️ Clique para executar'
+    }
     if (data.type === 'SEND_MEDIA') {
       const mediaType = data.config.mediaType || 'image'
       const mediaTypeLabel = {
@@ -210,6 +238,19 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
     if (data.config.url) {
       const method = data.config.method || 'GET'
       return `${method} ${data.config.url.length > 25 ? data.config.url.substring(0, 25) + '...' : data.config.url}`
+    }
+    if (data.type === 'CODE' && data.config.code) {
+      const mode = data.config.mode === 'runOnceForEachItem' ? 'Para cada item' : 'Uma vez'
+      const lines = data.config.code.split('\n').length
+      return `${mode} • ${lines} linha${lines > 1 ? 's' : ''}`
+    }
+    if (data.type === 'EDIT_FIELDS') {
+      const mode = data.config.mode || 'fields'
+      const count = data.config.operations?.length || 0
+      if (mode === 'json') {
+        return '📝 Modo JSON'
+      }
+      return `✏️ ${count} campo${count !== 1 ? 's' : ''}`
     }
     return null
   }
@@ -318,6 +359,24 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
             <p className="text-xs text-gray-400 leading-relaxed">
               {previewText}
             </p>
+          </div>
+        )}
+
+        {/* Start Button for TRIGGER_MANUAL */}
+        {data.type === 'TRIGGER_MANUAL' && (
+          <div className="mt-3 pt-3 border-t border-gray-700/50">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                if (data.onManualTrigger) {
+                  data.onManualTrigger(id)
+                }
+              }}
+              className="w-full px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+            >
+              <Play size={16} />
+              <span>Executar Agora</span>
+            </button>
           </div>
         )}
       </div>

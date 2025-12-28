@@ -201,6 +201,27 @@ export default function WorkflowPage() {
     }
   }
 
+  const handleManualTrigger = async (nodeId: string) => {
+    try {
+      console.log('[MANUAL TRIGGER] Starting workflow manually from node:', nodeId)
+      
+      // Find the trigger node to get its config
+      const triggerNode = workflow.nodes.find((n: WorkflowNode) => n.id === nodeId)
+      if (!triggerNode) {
+        alert('Trigger node not found')
+        return
+      }
+
+      // Call the backend to start execution
+      await apiClient.triggerManualExecution(tenantId, workflowId, nodeId)
+      
+      console.log('[MANUAL TRIGGER] Workflow started successfully')
+    } catch (error: any) {
+      console.error('[MANUAL TRIGGER] Error starting workflow:', error)
+      alert(`Erro ao executar workflow: ${error.message || 'Unknown error'}`)
+    }
+  }
+
   const handleAddNode = async (type: WorkflowNodeType, position?: { x: number; y: number }) => {
     console.log('[handleAddNode] Received type:', type);
     console.log('[handleAddNode] Type of type:', typeof type);
@@ -481,6 +502,7 @@ export default function WorkflowPage() {
             executionStatus={executionStatus}
             onNodeDoubleClick={handleNodeDoubleClick}
             onAddNode={handleAddNode}
+            onManualTrigger={handleManualTrigger}
             executedNodes={executedNodes}
             failedNodes={failedNodes}
           />
@@ -503,6 +525,7 @@ export default function WorkflowPage() {
           executionId={isViewingHistory ? historicalExecutionId : currentExecutionId}
           tenantId={tenantId}
           onClose={() => setInspectedNode(null)}
+          onSave={handleNodeConfigSave}
         />
       )}
 

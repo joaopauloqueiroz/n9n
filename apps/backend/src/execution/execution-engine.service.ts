@@ -72,9 +72,12 @@ export class ExecutionEngineService {
         edges: workflowData.edges as any,
       };
 
-      // Find trigger node
+      // Find trigger node (MESSAGE, SCHEDULE, or MANUAL)
       const triggerNode = workflow.nodes.find(
-        (n) => n.type === WorkflowNodeType.TRIGGER_MESSAGE,
+        (n) => 
+          n.type === WorkflowNodeType.TRIGGER_MESSAGE || 
+          n.type === WorkflowNodeType.TRIGGER_SCHEDULE ||
+          n.type === WorkflowNodeType.TRIGGER_MANUAL,
       );
 
       if (!triggerNode) {
@@ -240,6 +243,12 @@ export class ExecutionEngineService {
 
       const startTime = Date.now();
 
+      // Save the current output as input for this node (output from previous node)
+      // If there's an explicit input (like from a user message), use that instead
+      const nodeInput = Object.keys(execution.context.input || {}).length > 0
+        ? execution.context.input
+        : execution.context.output || {};
+
       // Execute node
       const result = await this.nodeExecutor.executeNode(
         currentNode,
@@ -300,7 +309,7 @@ export class ExecutionEngineService {
 
       const duration = Date.now() - startTime;
 
-      // Emit node executed event
+      // Emit node executed event with context data
       await this.eventBus.emit({
         type: EventType.NODE_EXECUTED,
         tenantId: execution.tenantId,
@@ -311,6 +320,12 @@ export class ExecutionEngineService {
         nodeId: currentNode.id,
         nodeType: currentNode.type,
         duration,
+        data: {
+          nodeType: currentNode.type,
+          input: nodeInput, // Output from previous node
+          output: result.output || execution.context.output,
+          variables: execution.context.variables,
+        },
         timestamp: new Date(),
       });
 

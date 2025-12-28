@@ -13,6 +13,8 @@ import {
   EndConfig,
   HttpRequestConfig,
   ManageLabelsConfig,
+  CodeConfig,
+  EditFieldsConfig,
 } from '@n9n/shared';
 import { ContextService } from './context.service';
 
@@ -68,6 +70,12 @@ export class NodeExecutorService {
 
       case WorkflowNodeType.HTTP_REQUEST:
         return this.executeHttpRequest(node, context, edges);
+
+      case WorkflowNodeType.CODE:
+        return this.executeCode(node, context, edges);
+
+      case WorkflowNodeType.EDIT_FIELDS:
+        return this.executeEditFields(node, context, edges);
 
       case WorkflowNodeType.MANAGE_LABELS:
         return this.executeManageLabels(node, context, edges, sessionId, contactId);
@@ -643,6 +651,152 @@ export class NodeExecutorService {
         nextNodeId,
         shouldWait: false,
         output: { [saveAs]: errorResponse },
+      };
+    }
+  }
+
+  /**
+   * Execute EDIT_FIELDS node
+   */
+  private executeEditFields(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+  ): NodeExecutionResult {
+    const config = node.config as EditFieldsConfig;
+
+    try {
+      let result: any = {};
+
+      if (config.mode === 'json') {
+        // JSON mode: parse and interpolate the JSON string
+        const interpolatedJson = this.contextService.interpolate(
+          config.jsonData || '{}',
+          context,
+        );
+        result = JSON.parse(interpolatedJson);
+      } else {
+        // Fields mode: process each operation
+        const operations = config.operations || [];
+        
+        // Start with input data if includeOtherFields is true
+        if (config.includeOtherFields !== false) {
+          result = { ...(context.output || {}) };
+        }
+
+        // Apply each field operation
+        operations.forEach((operation) => {
+          const fieldName = operation.name;
+          
+          console.log('[EDIT_FIELDS] Processing field:', fieldName);
+          console.log('[EDIT_FIELDS] Raw value:', operation.value);
+          console.log('[EDIT_FIELDS] Context variables:', JSON.stringify(context.variables, null, 2));
+          
+          let fieldValue: any = this.contextService.interpolate(
+            operation.value,
+            context,
+          );
+          
+          console.log('[EDIT_FIELDS] Interpolated value:', fieldValue);
+
+          // Convert to the specified type
+          switch (operation.type) {
+            case 'number':
+              fieldValue = Number(fieldValue);
+              break;
+            case 'boolean':
+              fieldValue = fieldValue === 'true' || fieldValue === true;
+              break;
+            case 'json':
+              try {
+                fieldValue = JSON.parse(fieldValue);
+              } catch (e) {
+                console.warn(`[EDIT_FIELDS] Failed to parse JSON for field ${fieldName}:`, e);
+              }
+              break;
+            // 'string' is default, no conversion needed
+          }
+
+          result[fieldName] = fieldValue;
+        });
+      }
+
+      // Set output
+      this.contextService.setOutput(context, result);
+
+      // Find next node
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: result,
+      };
+    } catch (error) {
+      console.error('[EDIT_FIELDS] Error:', error);
+      throw new Error(`Edit Fields failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute CODE node
+   */
+  private executeCode(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+  ): NodeExecutionResult {
+    const config = node.config as CodeConfig;
+
+    try {
+      // Prepare the execution context for the code
+      const variables = context.variables || {};
+      const globals = context.globals || {};
+      const input = context.input || {};
+
+      // Create a safe execution function
+      const executeUserCode = new Function('variables', 'globals', 'input', config.code);
+
+      // Execute the code
+      const result = executeUserCode(variables, globals, input);
+
+      // Save result to context
+      this.contextService.setVariable(context, 'codeOutput', result);
+
+      // Set output
+      this.contextService.setOutput(context, { codeOutput: result });
+
+      // Find next node
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: { codeOutput: result },
+      };
+    } catch (error) {
+      console.error('[CODE] Error executing code:', error);
+      
+      // Save error to context
+      const errorResult = {
+        error: true,
+        message: error.message,
+        name: error.name,
+      };
+      
+      this.contextService.setVariable(context, 'codeOutput', errorResult);
+      this.contextService.setOutput(context, { codeOutput: errorResult });
+
+      // Continue to next node even on error
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: { codeOutput: errorResult },
       };
     }
   }

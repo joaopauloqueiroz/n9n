@@ -1,0 +1,16 @@
+version: "2"
+# Adicione seu authtoken aqui
+# Obtenha em: https://dashboard.ngrok.com/get-started/your-authtoken
+# authtoken: 1Wxhz6SbtnJVnZ6mdqYz9CC90dp_6Xa3TgHoUAXKCCa1b3Pcg
+
+tunnels:
+  frontend:
+    proto: http
+    addr: 3000
+    inspect: false
+  
+  backend:
+    proto: http
+    addr: 3001
+    inspect: false
+

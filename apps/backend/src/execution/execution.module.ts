@@ -4,6 +4,7 @@ import { ExecutionEngineService } from './execution-engine.service';
 import { NodeExecutorService } from './node-executor.service';
 import { ContextService } from './context.service';
 import { WhatsappSenderService } from './whatsapp-sender.service';
+import { ScheduleWorker } from '../worker/schedule.worker';
 
 @Global()
 @Module({
@@ -13,6 +14,7 @@ import { WhatsappSenderService } from './whatsapp-sender.service';
     NodeExecutorService,
     ContextService,
     WhatsappSenderService,
+    ScheduleWorker,
   ],
   exports: [
     ExecutionService,

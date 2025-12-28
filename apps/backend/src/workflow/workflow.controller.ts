@@ -26,6 +26,17 @@ export class WorkflowController {
     private eventBus: EventBusService,
   ) {}
 
+  // Health check
+  @Get('health')
+  @HttpCode(HttpStatus.OK)
+  async healthCheck() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: 'n9n-backend',
+    };
+  }
+
   // Workflows
 
   @Get('workflows')
@@ -58,6 +69,18 @@ export class WorkflowController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteWorkflow(@Query('tenantId') tenantId: string, @Param('id') id: string) {
     await this.workflowService.deleteWorkflow(tenantId, id);
+  }
+
+  @Post('workflows/:id/trigger-manual')
+  async triggerManualExecution(
+    @Param('id') workflowId: string,
+    @Body() body: { tenantId: string; nodeId: string },
+  ) {
+    return this.workflowService.triggerManualExecution(
+      body.tenantId,
+      workflowId,
+      body.nodeId,
+    );
   }
 
   // WhatsApp Sessions

@@ -39,6 +39,7 @@ interface WorkflowCanvasProps {
   executionStatus?: 'idle' | 'running' | 'waiting' | 'completed' | 'failed'
   onNodeDoubleClick?: (node: WorkflowNode) => void
   onAddNode?: (type: WorkflowNodeType, position?: { x: number; y: number }) => void
+  onManualTrigger?: (nodeId: string) => void
   executedNodes?: Set<string>
   failedNodes?: Set<string>
 }
@@ -52,6 +53,7 @@ export default function WorkflowCanvas({
   executionStatus = 'idle',
   onNodeDoubleClick,
   onAddNode,
+  onManualTrigger,
   executedNodes = new Set(),
   failedNodes = new Set(),
 }: WorkflowCanvasProps) {
@@ -74,6 +76,7 @@ export default function WorkflowCanvas({
         executionStatus,
         hasExecuted: executedNodes.has(node.id),
         executionSuccess: executedNodes.has(node.id) && !failedNodes.has(node.id),
+        onManualTrigger,
       },
     }))
 

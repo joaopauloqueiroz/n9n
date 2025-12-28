@@ -28,6 +28,15 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         bgColor: 'bg-[#2a1942]',
         borderColor: 'border-[#7b5998]',
         description: 'Dispara em horários agendados'
+      },
+      {
+        type: 'TRIGGER_MANUAL' as WorkflowNodeType,
+        label: 'Manual',
+        icon: '▶️',
+        color: 'from-green-500 to-green-600',
+        bgColor: 'bg-[#1a2a1a]',
+        borderColor: 'border-[#3b7d3b]',
+        description: 'Dispara manualmente com um clique'
       }
     ],
     ACTIONS: [
@@ -75,6 +84,24 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         bgColor: 'bg-[#1a2a2e]',
         borderColor: 'border-[#3b7d7d]',
         description: 'Faz uma requisição HTTP para uma API externa'
+      },
+      {
+        type: 'CODE' as WorkflowNodeType,
+        label: 'Code',
+        icon: '{}',
+        color: 'from-purple-500 to-purple-600',
+        bgColor: 'bg-[#1a1a2e]',
+        borderColor: 'border-[#3b3b7d]',
+        description: 'Executa código JavaScript para transformar dados'
+      },
+      {
+        type: 'EDIT_FIELDS' as WorkflowNodeType,
+        label: 'Edit Fields',
+        icon: '✏️',
+        color: 'from-teal-500 to-teal-600',
+        bgColor: 'bg-[#1a2a2a]',
+        borderColor: 'border-[#3b6b6b]',
+        description: 'Adiciona, modifica ou remove campos dos dados'
       },
       {
         type: 'MANAGE_LABELS' as WorkflowNodeType,
