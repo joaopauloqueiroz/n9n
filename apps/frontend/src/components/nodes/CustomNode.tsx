@@ -116,6 +116,14 @@ const nodeConfig: Record<string, any> = {
     borderColor: 'border-[#7d5d39]',
     iconBg: 'bg-gradient-to-br from-orange-500 to-orange-600',
   },
+  'WAIT': {
+    label: 'Aguardar Tempo',
+    subtitle: 'AÇÃO',
+    icon: '⏱️',
+    bgColor: 'bg-[#2e2419]',
+    borderColor: 'border-[#7d5d39]',
+    iconBg: 'bg-gradient-to-br from-amber-500 to-amber-600',
+  },
   'END': {
     label: 'Finalizar',
     subtitle: 'FIM',
@@ -202,6 +210,17 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
     }
     if (data.type === 'TRIGGER_MANUAL') {
       return '▶️ Clique para executar'
+    }
+    if (data.type === 'WAIT') {
+      const amount = data.config.amount || 1
+      const unit = data.config.unit || 'seconds'
+      const unitLabel = {
+        seconds: 'segundo(s)',
+        minutes: 'minuto(s)',
+        hours: 'hora(s)',
+        days: 'dia(s)',
+      }[unit] || unit
+      return `⏱️ Aguardar ${amount} ${unitLabel}`
     }
     if (data.type === 'SEND_MEDIA') {
       const mediaType = data.config.mediaType || 'image'

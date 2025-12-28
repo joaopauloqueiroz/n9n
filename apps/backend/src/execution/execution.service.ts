@@ -131,7 +131,9 @@ export class ExecutionService {
       take: 50, // Limit to last 50 executions
     });
 
-    return executions.map(this.mapToExecution);
+    const mapped = executions.map(this.mapToExecution.bind(this));
+    console.log('📊 [getWorkflowExecutions] First execution:', mapped[0]);
+    return mapped;
   }
 
   /**
@@ -188,11 +190,12 @@ export class ExecutionService {
       context: data.context as ExecutionContext,
       interactionCount: data.interactionCount,
       startedAt: data.startedAt,
+      createdAt: data.startedAt, // Alias for frontend compatibility
       updatedAt: data.updatedAt,
       expiresAt: data.expiresAt,
       completedAt: data.completedAt,
       error: data.error,
-    };
+    } as any;
   }
 }
 

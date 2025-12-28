@@ -1121,6 +1121,54 @@ export default function NodeConfigModal({
           </div>
         )
 
+      case 'WAIT':
+        return (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Tempo de Espera
+              </label>
+              <div className="flex gap-3">
+                <input
+                  type="number"
+                  value={config.amount || 1}
+                  onChange={(e) => setConfig({ ...config, amount: parseInt(e.target.value) || 1 })}
+                  placeholder="1"
+                  min="1"
+                  className="flex-1 px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                />
+                <select
+                  value={config.unit || 'seconds'}
+                  onChange={(e) => setConfig({ ...config, unit: e.target.value })}
+                  className="px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                >
+                  <option value="seconds">Segundos</option>
+                  <option value="minutes">Minutos</option>
+                  <option value="hours">Horas</option>
+                  <option value="days">Dias</option>
+                </select>
+              </div>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Quanto tempo aguardar antes de continuar
+              </p>
+            </div>
+
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">ℹ️</span>
+                <div className="flex-1">
+                  <p className="text-sm text-blue-300 font-medium mb-1">
+                    Pausa Automática
+                  </p>
+                  <p className="text-xs text-blue-200/80">
+                    A execução será pausada pelo tempo configurado e depois continuará automaticamente para o próximo node.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+
       case 'CONDITION':
         // Parse existing expression or use defaults
         const parseExpression = (expr: string) => {

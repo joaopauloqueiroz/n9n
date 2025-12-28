@@ -332,26 +332,105 @@ export class ExecutionEngineService {
       // Handle wait
       if (result.shouldWait) {
         execution.status = ExecutionStatus.WAITING;
-        // Keep currentNodeId as the WAIT node, not the next node
-        // This is important so we can process the reply when resumed
         
-        await this.executionService.updateExecution(execution.id, {
-          status: ExecutionStatus.WAITING,
-          currentNodeId: currentNode.id, // Keep current node, not next
-          context: execution.context,
-        });
+        // Check if it's a WAIT node (automatic resume) or WAIT_REPLY (manual resume)
+        const isWaitNode = currentNode.type === WorkflowNodeType.WAIT;
+        
+        if (isWaitNode) {
+          // For WAIT nodes, move to next node immediately in DB but schedule resume
+          await this.executionService.updateExecution(execution.id, {
+            status: ExecutionStatus.WAITING,
+            currentNodeId: result.nextNodeId, // Move to next node
+            context: execution.context,
+          });
 
-        // Set timeout in Redis
-        if (result.waitTimeoutSeconds) {
-          const timeoutKey = `execution:timeout:${execution.id}`;
-          await this.redis.setWithTTL(
-            timeoutKey,
-            JSON.stringify({
-              onTimeout: result.onTimeout,
-              timeoutTargetNodeId: result.timeoutTargetNodeId,
-            }),
-            result.waitTimeoutSeconds,
-          );
+          // Schedule automatic resume after wait time
+          if (result.waitTimeoutSeconds) {
+            const waitMs = result.waitTimeoutSeconds * 1000;
+            console.log(`[WAIT] Scheduling auto-resume in ${waitMs}ms`);
+            
+            setTimeout(async () => {
+              try {
+                console.log(`[WAIT] Auto-resuming execution ${execution.id}`);
+                
+                // Get the updated execution from DB
+                const updatedExecution = await this.executionService.getExecution(
+                  execution.tenantId,
+                  execution.id,
+                );
+                
+                if (!updatedExecution) {
+                  console.error('[WAIT] Execution not found');
+                  return;
+                }
+                
+                if (updatedExecution.status !== ExecutionStatus.WAITING) {
+                  console.log('[WAIT] Execution is no longer waiting, skipping auto-resume');
+                  return;
+                }
+                
+                // Get workflow
+                const workflowData = await this.prisma.workflow.findFirst({
+                  where: { id: updatedExecution.workflowId, tenantId: updatedExecution.tenantId },
+                });
+                
+                if (!workflowData) {
+                  console.error('[WAIT] Workflow not found');
+                  return;
+                }
+                
+                const workflow: Workflow = {
+                  ...workflowData,
+                  description: workflowData.description || undefined,
+                  nodes: workflowData.nodes as any,
+                  edges: workflowData.edges as any,
+                };
+                
+                // Update status to RUNNING
+                updatedExecution.status = ExecutionStatus.RUNNING;
+                await this.executionService.updateExecution(execution.id, {
+                  status: ExecutionStatus.RUNNING,
+                });
+                
+                // Emit resumed event
+                await this.eventBus.emit({
+                  type: EventType.EXECUTION_RESUMED,
+                  tenantId: updatedExecution.tenantId,
+                  executionId: updatedExecution.id,
+                  workflowId: updatedExecution.workflowId,
+                  sessionId: updatedExecution.sessionId,
+                  contactId: updatedExecution.contactId,
+                  timestamp: new Date(),
+                });
+                
+                // Continue execution from the next node
+                await this.continueExecution(updatedExecution, workflow);
+              } catch (error) {
+                console.error('[WAIT] Error auto-resuming execution:', error);
+              }
+            }, waitMs);
+          }
+        } else {
+          // For WAIT_REPLY, keep currentNodeId as the WAIT_REPLY node
+          // This is important so we can process the reply when resumed
+          await this.executionService.updateExecution(execution.id, {
+            status: ExecutionStatus.WAITING,
+            currentNodeId: currentNode.id, // Keep current node, not next
+            context: execution.context,
+          });
+
+          // Set timeout in Redis for WAIT_REPLY
+          if (result.waitTimeoutSeconds) {
+            const timeoutKey = `execution:timeout:${execution.id}`;
+            await this.redis.setWithTTL(
+              timeoutKey,
+              JSON.stringify({
+                onTimeout: result.onTimeout,
+                timeoutTargetNodeId: result.timeoutTargetNodeId,
+              }),
+              result.waitTimeoutSeconds,
+            );
+          }
         }
 
         // Emit waiting event

@@ -13,6 +13,7 @@ export enum WorkflowNodeType {
   CONDITION = 'CONDITION',
   SWITCH = 'SWITCH',
   WAIT_REPLY = 'WAIT_REPLY',
+  WAIT = 'WAIT',
   END = 'END',
 }
 
@@ -232,5 +233,11 @@ export interface EditFieldsConfig {
   jsonData?: string; // For JSON mode
   operations: EditFieldsOperation[]; // For fields mode
   includeOtherFields?: boolean; // Include fields from input that aren't explicitly set
+}
+
+export interface WaitConfig {
+  unit: 'seconds' | 'minutes' | 'hours' | 'days';
+  amount: number; // Amount of time to wait
+  resumeOnMessage?: boolean; // If true, can be resumed by incoming message (like WAIT_REPLY)
 }
 

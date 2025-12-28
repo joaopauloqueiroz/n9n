@@ -10,6 +10,7 @@ import {
   SendListConfig,
   ConditionConfig,
   WaitReplyConfig,
+  WaitConfig,
   EndConfig,
   HttpRequestConfig,
   ManageLabelsConfig,
@@ -88,6 +89,9 @@ export class NodeExecutorService {
 
       case WorkflowNodeType.WAIT_REPLY:
         return this.executeWaitReply(node, context, edges);
+
+      case WorkflowNodeType.WAIT:
+        return this.executeWait(node, context, edges);
 
       case WorkflowNodeType.END:
         return this.executeEnd(node, context);
@@ -829,6 +833,57 @@ export class NodeExecutorService {
     
     // Also save the raw message
     this.contextService.setVariable(context, `${config.saveAs}_raw`, message);
+  }
+
+  /**
+   * Execute WAIT node - pause execution for a specified time
+   */
+  private executeWait(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+  ): NodeExecutionResult {
+    const config = node.config as WaitConfig;
+    const nextEdge = edges.find((e) => e.source === node.id);
+
+    // Default values
+    const amount = config.amount || 1;
+    const unit = config.unit || 'seconds';
+
+    // Convert wait time to milliseconds
+    let waitMs = 0;
+    switch (unit) {
+      case 'seconds':
+        waitMs = amount * 1000;
+        break;
+      case 'minutes':
+        waitMs = amount * 60 * 1000;
+        break;
+      case 'hours':
+        waitMs = amount * 60 * 60 * 1000;
+        break;
+      case 'days':
+        waitMs = amount * 24 * 60 * 60 * 1000;
+        break;
+      default:
+        waitMs = amount * 1000; // Default to seconds
+    }
+
+    console.log(`[WAIT] Pausing execution for ${amount} ${unit} (${waitMs}ms)`);
+
+    // Schedule continuation using setTimeout
+    // Note: In production, you'd want to use a job queue (Bull, Agenda, etc.)
+    // For now, we'll use a simple setTimeout approach
+    
+    return {
+      nextNodeId: nextEdge?.target || null,
+      shouldWait: true,
+      waitTimeoutSeconds: Math.ceil(waitMs / 1000),
+      output: {
+        waitedFor: `${amount} ${unit}`,
+        waitStartedAt: new Date().toISOString(),
+      },
+    };
   }
 }
 

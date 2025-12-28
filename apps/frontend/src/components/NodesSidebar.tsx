@@ -122,6 +122,15 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         description: 'Aguarda resposta do usuário'
       },
       {
+        type: 'WAIT' as WorkflowNodeType,
+        label: 'Aguardar Tempo',
+        icon: '⏱️',
+        color: 'from-amber-500 to-amber-600',
+        bgColor: 'bg-[#2e2419]',
+        borderColor: 'border-[#7d5d39]',
+        description: 'Pausa a execução por um tempo determinado'
+      },
+      {
         type: 'CONDITION' as WorkflowNodeType,
         label: 'Condição',
         icon: '🔀',

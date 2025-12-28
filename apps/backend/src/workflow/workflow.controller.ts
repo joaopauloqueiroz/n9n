@@ -200,7 +200,10 @@ export class WorkflowController {
     @Query('tenantId') tenantId: string,
     @Param('workflowId') workflowId: string,
   ) {
-    return this.executionService.getWorkflowExecutions(tenantId, workflowId);
+    const executions = await this.executionService.getWorkflowExecutions(tenantId, workflowId);
+    console.log('📊 [Controller] Returning executions:', executions.length);
+    console.log('📅 [Controller] First execution:', JSON.stringify(executions[0], null, 2));
+    return executions;
   }
 
   @Get('executions')
