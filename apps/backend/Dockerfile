@@ -1,42 +1,49 @@
+############################
+# Base / Build stage
+############################
 FROM node:18-alpine AS base
 
-# Install pnpm (version compatible with lockfileVersion 9.0)
+# Install pnpm
 RUN npm install -g pnpm@10
 
-# Set working directory
 WORKDIR /app
-
 
 # Copy workspace files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared ./packages/shared
 COPY apps/backend ./apps/backend
 
-# Install dependencies (including devDependencies needed for Prisma)
+# Install ALL deps (needed for build + prisma)
 RUN pnpm install --frozen-lockfile
 
-# Generate Prisma Client before building TypeScript
-# This must happen before the TypeScript build so types are available
+############################
+# Prisma generate (types)
+############################
 WORKDIR /app/apps/backend
-
-# Generate Prisma Client (this creates types needed for TypeScript compilation)
 RUN pnpm db:generate
 
-# Build shared package
+############################
+# Build shared
+############################
 WORKDIR /app/packages/shared
 RUN pnpm build
 
+############################
 # Build backend
+############################
 WORKDIR /app/apps/backend
 RUN pnpm build
 
+
+############################
 # Production stage
+############################
 FROM node:18-alpine AS production
 
-# Install pnpm (version compatible with lockfileVersion 9.0)
+# Install pnpm
 RUN npm install -g pnpm@10
 
-# Install dependencies for runtime (Puppeteer needs Chromium)
+# Runtime dependencies (Chromium + Postgres)
 RUN apk add --no-cache \
     chromium \
     nss \
@@ -45,10 +52,9 @@ RUN apk add --no-cache \
     ca-certificates \
     ttf-freefont \
     postgresql-client \
-    openssl \
-    openssl-dev
+    openssl
 
-# Set Puppeteer to use installed Chromium
+# Puppeteer config
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
@@ -59,35 +65,32 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared ./packages/shared
 COPY apps/backend ./apps/backend
 
-# Install all dependencies (needed for Prisma generation)
-RUN pnpm install --frozen-lockfile
+# Install ONLY production deps
+RUN pnpm install --prod --frozen-lockfile
 
-# Copy built files from build stage
+# Copy build artifacts
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/backend/dist ./apps/backend/dist
-# Verify main.js exists in the correct location
-RUN test -f /app/apps/backend/dist/apps/backend/src/main.js || (echo "ERROR: main.js not found!" && find /app/apps/backend/dist -name "main.js" && exit 1)
 
+# Safety check
+RUN test -f /app/apps/backend/dist/apps/backend/src/main.js \
+  || (echo "❌ main.js not found" && find /app/apps/backend/dist -name "main.js" && exit 1)
+
+############################
+# Prisma Client (runtime-safe)
+############################
 WORKDIR /app/apps/backend
-
-# Generate Prisma Client
 RUN pnpm db:generate
 
-# Install Prisma CLI globally for migrations (needed at runtime)
+# Prisma CLI for migrations
 RUN npm install -g prisma@^5.8.0
 
-# Remove devDependencies to reduce image size (Prisma Client remains)
-WORKDIR /app
-ENV CI=true
-RUN pnpm prune --prod
-
-# Copy entrypoint script
+############################
+# Entrypoint
+############################
 COPY apps/backend/docker-entrypoint.sh /app/apps/backend/docker-entrypoint.sh
 RUN chmod +x /app/apps/backend/docker-entrypoint.sh
 
-# Expose port
 EXPOSE 3041
 
-# Use entrypoint script
 ENTRYPOINT ["/app/apps/backend/docker-entrypoint.sh"]
-
