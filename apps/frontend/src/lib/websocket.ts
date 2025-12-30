@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { WorkflowEvent } from '@n9n/shared'
 
-const WS_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+const WS_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space'
 
 class WebSocketClient {
   private socket: Socket | null = null
