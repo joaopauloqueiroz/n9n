@@ -69,6 +69,9 @@ WORKDIR /app/apps/backend
 # Generate Prisma Client
 RUN pnpm db:generate
 
+# Install Prisma CLI globally for migrations (needed at runtime)
+RUN npm install -g prisma@^5.8.0
+
 # Remove devDependencies to reduce image size (Prisma Client remains)
 WORKDIR /app
 ENV CI=true

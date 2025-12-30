@@ -21,7 +21,9 @@ echo "✅ Database is ready!"
 
 # Run migrations
 echo "📦 Running database migrations..."
-pnpm db:migrate:prod || echo "⚠️ Migration failed or already applied"
+# Use prisma directly since it's installed globally
+cd /app/apps/backend
+prisma migrate deploy || echo "⚠️ Migration failed or already applied"
 
 # Start the application
 echo "🚀 Starting application..."
