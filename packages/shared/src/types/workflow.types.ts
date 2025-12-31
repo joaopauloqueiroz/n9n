@@ -7,6 +7,7 @@ export enum WorkflowNodeType {
   SEND_BUTTONS = 'SEND_BUTTONS',
   SEND_LIST = 'SEND_LIST',
   HTTP_REQUEST = 'HTTP_REQUEST',
+  HTTP_SCRAPE = 'HTTP_SCRAPE',
   CODE = 'CODE',
   EDIT_FIELDS = 'EDIT_FIELDS',
   MANAGE_LABELS = 'MANAGE_LABELS',
@@ -203,6 +204,24 @@ export interface HttpRequestConfig {
   saveResponseAs?: string; // variable name to save response, default 'httpResponse'
   followRedirects?: boolean;
   ignoreSSLIssues?: boolean;
+}
+
+export interface HttpScrapeConfig {
+  url: string; // supports {{variables.name}} syntax
+  waitFor?: 'networkidle0' | 'networkidle2' | 'load' | 'domcontentloaded' | 'selector'; // wait strategy
+  waitSelector?: string; // CSS selector to wait for (if waitFor is 'selector')
+  waitTimeout?: number; // milliseconds, default 30000
+  extractSelector?: string; // CSS selector to extract data (extracts innerHTML if provided)
+  extractType?: 'html' | 'text' | 'json'; // how to extract data
+  executeScript?: string; // JavaScript code to execute on page (supports {{variables.name}} syntax)
+  screenshot?: boolean; // take screenshot
+  viewport?: {
+    width?: number;
+    height?: number;
+  };
+  headers?: Array<{ key: string; value: string }>; // custom headers
+  timeout?: number; // overall timeout in milliseconds, default 60000
+  saveResponseAs?: string; // variable name to save response, default 'scrapeResponse'
 }
 
 export interface ManageLabelsConfig {

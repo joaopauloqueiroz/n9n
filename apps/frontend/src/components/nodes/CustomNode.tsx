@@ -68,6 +68,14 @@ const nodeConfig: Record<string, any> = {
     borderColor: 'border-[#3b7d7d]',
     iconBg: 'bg-gradient-to-br from-cyan-500 to-cyan-600',
   },
+  'HTTP_SCRAPE': {
+    label: 'Web Scraping',
+    subtitle: 'AÇÃO',
+    icon: '🕷️',
+    bgColor: 'bg-[#2a1a2e]',
+    borderColor: 'border-[#7d3b8d]',
+    iconBg: 'bg-gradient-to-br from-violet-500 to-violet-600',
+  },
   'MANAGE_LABELS': {
     label: 'Gerenciar Etiquetas',
     subtitle: 'AÇÃO',
@@ -264,9 +272,12 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
       const count = data.config.rules.length
       return `${count} ${count === 1 ? 'regra' : 'regras'} configurada${count === 1 ? '' : 's'}`
     }
-    if (data.config.url) {
+    if (data.type === 'HTTP_REQUEST' && data.config.url) {
       const method = data.config.method || 'GET'
       return `${method} ${data.config.url.length > 25 ? data.config.url.substring(0, 25) + '...' : data.config.url}`
+    }
+    if (data.type === 'HTTP_SCRAPE' && data.config.url) {
+      return `🕷️ ${data.config.url.length > 25 ? data.config.url.substring(0, 25) + '...' : data.config.url}`
     }
     if (data.type === 'CODE' && data.config.code) {
       const mode = data.config.mode === 'runOnceForEachItem' ? 'Para cada item' : 'Uma vez'

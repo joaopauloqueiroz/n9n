@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { WorkflowNode } from '@n9n/shared'
 import { X, ChevronRight, Search } from 'lucide-react'
 import NodeConfigModal from './NodeConfigModal'
+import { apiClient } from '@/lib/api-client'
 
 interface NodeExecutionPanelProps {
   node: WorkflowNode
@@ -53,30 +54,45 @@ export default function NodeExecutionPanel({
   }, [executionData?.workflowId])
 
   const loadExecutionData = async () => {
+    if (!executionId) return
+    
     try {
       setLoading(true)
       
       // Load execution details
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space'
-      const executionUrl = `${API_URL}/api/executions/${executionId}?tenantId=${tenantId}`
-      const executionResponse = await fetch(executionUrl)
-      if (executionResponse.ok) {
-        const data = await executionResponse.json()
+      try {
+        const data = await apiClient.getExecution(tenantId, executionId)
         console.log('[NodeExecutionPanel] Loaded execution data:', data)
         console.log('[NodeExecutionPanel] Context variables:', data?.context?.variables)
         setExecutionData(data)
-      } else {
-        console.error('[loadExecutionData] Failed to load execution:', executionResponse.status)
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          console.warn('[loadExecutionData] Execution not found:', executionId)
+        } else {
+          console.error('[loadExecutionData] Failed to load execution:', error)
+        }
       }
 
       // Load execution logs to get node-specific data
-      const logsUrl = `${API_URL}/api/executions/${executionId}/logs?tenantId=${tenantId}`
-      const logsResponse = await fetch(logsUrl)
-      if (logsResponse.ok) {
-        const logs = await logsResponse.json()
+      try {
+        const logs = await apiClient.getExecutionLogs(tenantId, executionId)
+        console.log('[loadExecutionData] Loaded execution logs:', logs)
+        console.log('[loadExecutionData] Logs count:', logs.length)
+        logs.forEach((log: any, index: number) => {
+          console.log(`[loadExecutionData] Log ${index}:`, {
+            eventType: log.eventType,
+            nodeId: log.nodeId,
+            data: log.data,
+            output: log.data?.output
+          })
+        })
         setExecutionLogs(logs)
-      } else {
-        console.error('[loadExecutionData] Failed to load logs:', logsResponse.status)
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          console.warn('[loadExecutionData] Execution logs not found:', executionId)
+        } else {
+          console.error('[loadExecutionData] Failed to load logs:', error)
+        }
       }
     } catch (error) {
       console.error('[loadExecutionData] Error loading execution data:', error)
@@ -93,7 +109,7 @@ export default function NodeExecutionPanel({
     
     try {
       console.log('[loadWorkflowNodes] Loading nodes for workflow:', executionData.workflowId)
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space3001'
+      const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
       const workflowUrl = `${API_URL}/api/workflows/${executionData.workflowId}?tenantId=${tenantId}`
       const response = await fetch(workflowUrl)
       if (response.ok) {
@@ -119,13 +135,13 @@ export default function NodeExecutionPanel({
     
     if (nodeExecutedLog?.data) {
       // The backend saves the entire event in the 'data' field
-      // So event.data (which contains input, output, variables) is at log.data.data
-      const eventData = nodeExecutedLog.data.data || nodeExecutedLog.data
-      console.log('[getCurrentNodeData] eventData:', eventData)
+      // The event itself is stored directly in log.data
+      const eventData = nodeExecutedLog.data
+      console.log('[getCurrentNodeData] eventData (raw):', eventData)
+      console.log('[getCurrentNodeData] eventData.output:', eventData?.output)
       console.log('[getCurrentNodeData] eventData.variables:', eventData?.variables)
-      console.log('[getCurrentNodeData] contactTags value:', eventData?.variables?.contactTags)
-      console.log('[getCurrentNodeData] contactTags type:', typeof eventData?.variables?.contactTags)
-      console.log('[getCurrentNodeData] contactTags isArray:', Array.isArray(eventData?.variables?.contactTags))
+      
+      // Return the event data directly - it contains output, variables, etc.
       return eventData
     }
     
@@ -149,13 +165,18 @@ export default function NodeExecutionPanel({
 
   const getNodeOutputData = () => {
     const nodeData = getCurrentNodeData()
+    console.log('[getNodeOutputData] nodeData:', nodeData)
+    console.log('[getNodeOutputData] nodeData.output:', nodeData?.output)
     
     if (nodeData?.output && Object.keys(nodeData.output).length > 0) {
+      console.log('[getNodeOutputData] Returning nodeData.output:', nodeData.output)
       return nodeData.output
     }
     
     // Fallback para variables se output estiver vazio
-    return nodeData?.variables || {}
+    const variables = nodeData?.variables || {}
+    console.log('[getNodeOutputData] Returning variables (fallback):', variables)
+    return variables
   }
 
   const getExecutedNodes = () => {
@@ -354,6 +375,45 @@ export default function NodeExecutionPanel({
           </>
         )}
 
+        {/* HTTP_SCRAPE Node */}
+        {nodeType === 'HTTP_SCRAPE' && (
+          <>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-300 mb-1.5">URL</label>
+              <div className="px-3 py-2 bg-[#0d0d0d] border border-gray-700 rounded text-[11px] text-white font-mono break-all">
+                {config.url}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 mb-1.5">Wait For</label>
+                <div className="px-3 py-2 bg-[#0d0d0d] border border-gray-700 rounded text-xs text-white font-semibold">
+                  {config.waitFor || 'networkidle2'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 mb-1.5">Save Response As</label>
+                <div className="px-3 py-2 bg-[#0d0d0d] border border-gray-700 rounded text-xs text-white font-mono">
+                  {config.saveResponseAs || 'scrapeResponse'}
+                </div>
+              </div>
+            </div>
+            {config.extractSelector && (
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 mb-1.5">Extract Selector</label>
+                <div className="px-3 py-2 bg-[#0d0d0d] border border-gray-700 rounded text-[11px] text-white font-mono break-all">
+                  {config.extractSelector}
+                </div>
+              </div>
+            )}
+            {config.screenshot && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">📸 Screenshot habilitado</span>
+              </div>
+            )}
+          </>
+        )}
+
         {/* SEND_MESSAGE Node */}
         {nodeType === 'SEND_MESSAGE' && config.message && (
           <div>
@@ -389,7 +449,7 @@ export default function NodeExecutionPanel({
         )}
 
         {/* Default fallback for other nodes */}
-        {!['EDIT_FIELDS', 'CODE', 'HTTP_REQUEST', 'SEND_MESSAGE', 'CONDITION'].includes(nodeType || '') && (
+        {!['EDIT_FIELDS', 'CODE', 'HTTP_REQUEST', 'HTTP_SCRAPE', 'SEND_MESSAGE', 'CONDITION'].includes(nodeType || '') && (
           <>
             {Object.keys(config).length > 0 ? (
               <div className="space-y-3">
@@ -647,27 +707,64 @@ export default function NodeExecutionPanel({
   const currentNode = getCurrentNode()
   const inputData = getNodeInputData() // Muda com selectedNodeId
   
-  // OUTPUT FIXO - sempre do node inicial (configNodeId)
-  const getFixedOutputData = () => {
+  // OUTPUT - muda com selectedNodeId para mostrar output do node selecionado
+  const getOutputData = () => {
     const nodeExecutedLog = executionLogs.find(
       (log) => {
         const logType = log.eventType || log.type
-        return logType === 'node.executed' && log.nodeId === configNodeId
+        return logType === 'node.executed' && log.nodeId === selectedNodeId
       }
     )
     
+    console.log('[getOutputData] nodeExecutedLog:', nodeExecutedLog)
+    console.log('[getOutputData] selectedNodeId:', selectedNodeId)
+    console.log('[getOutputData] executionLogs count:', executionLogs.length)
+    
     if (nodeExecutedLog?.data) {
-      const eventData = nodeExecutedLog.data.data || nodeExecutedLog.data
+      // Event data is stored directly in log.data
+      const eventData = nodeExecutedLog.data
+      console.log('[getOutputData] eventData:', eventData)
+      console.log('[getOutputData] eventData.output:', eventData?.output)
+      
+      // Try output first (from node execution result)
       if (eventData?.output && Object.keys(eventData.output).length > 0) {
+        console.log('[getOutputData] Returning eventData.output:', eventData.output)
         return eventData.output
       }
-      return eventData?.variables || {}
+      
+      // Fallback to nested data structure (for compatibility)
+      const nestedData = eventData.data || eventData
+      if (nestedData?.output && Object.keys(nestedData.output).length > 0) {
+        console.log('[getOutputData] Returning nestedData.output:', nestedData.output)
+        return nestedData.output
+      }
+      
+      // Fallback to variables from context (some nodes save output in variables)
+      const variables = nestedData?.variables || eventData?.variables || {}
+      console.log('[getOutputData] Returning variables (fallback):', variables)
+      return variables
     }
     
-    return executionData?.context || {}
+    // Final fallback to execution context
+    const context = executionData?.context || {}
+    const contextOutput = context.output || {}
+    
+    console.log('[getOutputData] Context:', context)
+    console.log('[getOutputData] Context output:', contextOutput)
+    
+    // If we have output in context, return it
+    if (contextOutput && Object.keys(contextOutput).length > 0) {
+      console.log('[getOutputData] Returning context.output:', contextOutput)
+      return contextOutput
+    }
+    
+    // Last resort: return empty object so UI can show "No output"
+    console.log('[getOutputData] No output found, returning empty object')
+    return {}
   }
   
-  const outputData = getFixedOutputData() // FIXO no configNodeId
+  const outputData = getOutputData() // Muda com selectedNodeId
+  console.log('[NodeExecutionPanel] Final outputData for node', selectedNodeId, ':', outputData)
 
   return (
     <>

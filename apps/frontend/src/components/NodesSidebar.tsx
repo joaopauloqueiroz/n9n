@@ -86,6 +86,15 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         description: 'Faz uma requisição HTTP para uma API externa'
       },
       {
+        type: 'HTTP_SCRAPE' as WorkflowNodeType,
+        label: 'Web Scraping',
+        icon: '🕷️',
+        color: 'from-violet-500 to-violet-600',
+        bgColor: 'bg-[#2a1a2e]',
+        borderColor: 'border-[#7d3b8d]',
+        description: 'Faz scraping de páginas web renderizadas com JavaScript'
+      },
+      {
         type: 'CODE' as WorkflowNodeType,
         label: 'Code',
         icon: '{}',

@@ -15,7 +15,7 @@ interface NodeConfigModalProps {
 
 // Component for SET_TAGS configuration
 function SetTagsConfig({ config, setConfig, tenantId }: any) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space'
+  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
   const [availableTags, setAvailableTags] = useState<any[]>([])
   const [loadingTags, setLoadingTags] = useState(false)
 
@@ -180,6 +180,7 @@ function SetTagsConfig({ config, setConfig, tenantId }: any) {
   )
 }
 
+
 // Editor de código Monaco (VS Code)
 function CodeEditor({ value, onChange, language = 'javascript' }: any) {
   const handleEditorChange = (newValue: string | undefined) => {
@@ -264,6 +265,14 @@ function CodeEditor({ value, onChange, language = 'javascript' }: any) {
           comments: false,
           strings: true,
         },
+        // Fix space key issue - prevent space from accepting suggestions
+        acceptSuggestionOnCommitCharacter: false,
+        acceptSuggestionOnEnter: 'on',
+        accessibilitySupport: 'auto',
+        // Allow normal typing including spaces
+        disableLayerHinting: true,
+        // Disable quick suggestions on space
+        quickSuggestionsDelay: 500,
       }}
     />
   )
@@ -337,7 +346,7 @@ export default function NodeConfigModal({
   onSave,
   embedded = false,
 }: NodeConfigModalProps) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space'
+  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
   const [activeTab, setActiveTab] = useState<'parameters' | 'settings'>('parameters')
   const [config, setConfig] = useState<any>({})
   const [sessions, setSessions] = useState<any[]>([])
@@ -2060,6 +2069,289 @@ export default function NodeConfigModal({
               <p className="text-xs text-blue-300 leading-relaxed">
                 💡 <strong>Dica:</strong> Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">{'{{variables.nome}}'}</code> para interpolar variáveis na URL, headers, query params e body. 
                 A resposta será salva em <code className="bg-blue-500/20 px-1 py-0.5 rounded">variables.{config.saveResponseAs || 'httpResponse'}</code> e pode ser acessada nos próximos nodes.
+              </p>
+            </div>
+          </div>
+        )
+
+      case 'HTTP_SCRAPE':
+        const scrapeHeaders = config.headers || []
+        
+        const addScrapeHeader = () => {
+          setConfig({ ...config, headers: [...scrapeHeaders, { key: '', value: '' }] })
+        }
+        
+        const updateScrapeHeader = (index: number, field: string, value: string) => {
+          const updated = [...scrapeHeaders]
+          updated[index] = { ...updated[index], [field]: value }
+          setConfig({ ...config, headers: updated })
+        }
+        
+        const removeScrapeHeader = (index: number) => {
+          const updated = scrapeHeaders.filter((_: any, i: number) => i !== index)
+          setConfig({ ...config, headers: updated })
+        }
+
+        return (
+          <div className="space-y-6">
+            {/* URL */}
+            <div>
+              <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                URL
+              </label>
+              <input
+                type="text"
+                value={config.url || ''}
+                onChange={(e) => setConfig({ ...config, url: e.target.value })}
+                placeholder="https://example.com"
+                className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
+              />
+            </div>
+
+            {/* Wait Strategy */}
+            <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">Estratégia de Espera</h3>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                    Aguardar por
+                  </label>
+                  <select
+                    value={config.waitFor || 'networkidle2'}
+                    onChange={(e) => setConfig({ ...config, waitFor: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white"
+                  >
+                    <option value="networkidle0">Network Idle 0 (sem requisições)</option>
+                    <option value="networkidle2">Network Idle 2 (máx 2 requisições)</option>
+                    <option value="load">Evento Load</option>
+                    <option value="domcontentloaded">DOM Content Loaded</option>
+                    <option value="selector">Seletor CSS específico</option>
+                  </select>
+                </div>
+
+                {config.waitFor === 'selector' && (
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                      Seletor CSS
+                    </label>
+                    <input
+                      type="text"
+                      value={config.waitSelector || ''}
+                      onChange={(e) => setConfig({ ...config, waitSelector: e.target.value })}
+                      placeholder=".content, #main, div.class-name"
+                      className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                    Timeout de Espera (ms)
+                  </label>
+                  <input
+                    type="number"
+                    value={config.waitTimeout || 30000}
+                    onChange={(e) => setConfig({ ...config, waitTimeout: parseInt(e.target.value) })}
+                    placeholder="30000"
+                    className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Extract Data */}
+            <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">Extrair Dados</h3>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                    Seletor CSS (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={config.extractSelector || ''}
+                    onChange={(e) => setConfig({ ...config, extractSelector: e.target.value })}
+                    placeholder=".content, #main, div.class-name"
+                    className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Deixe vazio para extrair HTML completo da página
+                  </p>
+                </div>
+
+                {config.extractSelector && (
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                      Tipo de Extração
+                    </label>
+                    <select
+                      value={config.extractType || 'html'}
+                      onChange={(e) => setConfig({ ...config, extractType: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white"
+                    >
+                      <option value="html">HTML (innerHTML)</option>
+                      <option value="text">Texto (textContent)</option>
+                      <option value="json">JSON (tenta parsear)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Execute Script */}
+            <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">Executar Script (opcional)</h3>
+              
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                  Código JavaScript
+                </label>
+                <textarea
+                  value={config.executeScript || ''}
+                  onChange={(e) => setConfig({ ...config, executeScript: e.target.value })}
+                  placeholder="return document.querySelector('.price')?.textContent;"
+                  rows={6}
+                  className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono resize-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  O código será executado na página e o resultado será salvo em scriptResult
+                </p>
+              </div>
+            </div>
+
+            {/* Headers */}
+            <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-200">Headers Customizados</h3>
+                <button
+                  onClick={addScrapeHeader}
+                  className="px-3 py-1.5 bg-primary text-black rounded text-xs font-semibold hover:bg-primary/80 transition"
+                >
+                  + Adicionar
+                </button>
+              </div>
+              
+              <div className="space-y-2">
+                {scrapeHeaders.map((header: any, index: number) => (
+                  <div key={index} className="grid grid-cols-12 gap-2">
+                    <input
+                      type="text"
+                      value={header.key}
+                      onChange={(e) => updateScrapeHeader(index, 'key', e.target.value)}
+                      placeholder="User-Agent"
+                      className="col-span-5 px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500"
+                    />
+                    <input
+                      type="text"
+                      value={header.value}
+                      onChange={(e) => updateScrapeHeader(index, 'value', e.target.value)}
+                      placeholder="Mozilla/5.0..."
+                      className="col-span-6 px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
+                    />
+                    <button
+                      onClick={() => removeScrapeHeader(index)}
+                      className="col-span-1 text-red-400 hover:text-red-300"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {scrapeHeaders.length === 0 && (
+                  <p className="text-xs text-gray-500 text-center py-2">Nenhum header adicionado</p>
+                )}
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">Opções</h3>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                    Salvar resposta como
+                  </label>
+                  <input
+                    type="text"
+                    value={config.saveResponseAs || 'scrapeResponse'}
+                    onChange={(e) => setConfig({ ...config, saveResponseAs: e.target.value })}
+                    placeholder="scrapeResponse"
+                    className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                    Timeout Total (ms)
+                  </label>
+                  <input
+                    type="number"
+                    value={config.timeout || 60000}
+                    onChange={(e) => setConfig({ ...config, timeout: parseInt(e.target.value) })}
+                    placeholder="60000"
+                    className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                      Largura do Viewport
+                    </label>
+                    <input
+                      type="number"
+                      value={config.viewport?.width || 1920}
+                      onChange={(e) => setConfig({ 
+                        ...config, 
+                        viewport: { 
+                          ...config.viewport, 
+                          width: parseInt(e.target.value) || 1920 
+                        } 
+                      })}
+                      className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                      Altura do Viewport
+                    </label>
+                    <input
+                      type="number"
+                      value={config.viewport?.height || 1080}
+                      onChange={(e) => setConfig({ 
+                        ...config, 
+                        viewport: { 
+                          ...config.viewport, 
+                          height: parseInt(e.target.value) || 1080 
+                        } 
+                      })}
+                      className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={config.screenshot || false}
+                    onChange={(e) => setConfig({ ...config, screenshot: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-700 bg-[#1a1a1a] text-primary focus:ring-primary"
+                  />
+                  <label className="text-xs text-gray-400">
+                    Capturar screenshot da página
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Help Text */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-xs text-blue-300 leading-relaxed">
+                💡 <strong>Dica:</strong> Este node usa um navegador headless para renderizar páginas com JavaScript. 
+                Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">{'{{variables.nome}}'}</code> para interpolar variáveis na URL e scripts. 
+                A resposta será salva em <code className="bg-blue-500/20 px-1 py-0.5 rounded">variables.{config.saveResponseAs || 'scrapeResponse'}</code> com os campos: html, scriptResult, screenshot, title e timestamp.
               </p>
             </div>
           </div>

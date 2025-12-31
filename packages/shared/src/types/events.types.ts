@@ -68,6 +68,7 @@ export interface NodeExecutedEvent extends ExecutionEvent {
   nodeId: string;
   nodeType: string;
   duration: number;
+  output?: Record<string, any>;
 }
 
 export interface WhatsappMessageReceivedEvent extends BaseEvent {

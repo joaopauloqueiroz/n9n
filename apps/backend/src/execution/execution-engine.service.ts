@@ -322,7 +322,13 @@ export class ExecutionEngineService {
 
       const duration = Date.now() - startTime;
 
-      // Emit node executed event
+      // Get output from result or from context (some nodes save output in context via setOutput)
+      // Merge both to ensure we capture all output data
+      const resultOutput = result.output || {};
+      const contextOutput = execution.context.output || {};
+      const nodeOutput = { ...contextOutput, ...resultOutput };
+
+      // Emit node executed event with output
       await this.eventBus.emit({
         type: EventType.NODE_EXECUTED,
         tenantId: execution.tenantId,
@@ -333,6 +339,7 @@ export class ExecutionEngineService {
         nodeId: currentNode.id,
         nodeType: currentNode.type,
         duration,
+        output: nodeOutput,
         timestamp: new Date(),
       });
 

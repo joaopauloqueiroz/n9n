@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { WorkflowService } from './workflow.service';
 import { TagService, CreateTagDto, UpdateTagDto } from './tag.service';
@@ -216,12 +217,17 @@ export class WorkflowController {
 
   @Get('executions/:id')
   async getExecution(@Query('tenantId') tenantId: string, @Param('id') id: string) {
-    return this.executionService.getExecution(tenantId, id);
+    const execution = await this.executionService.getExecution(tenantId, id);
+    if (!execution) {
+      throw new NotFoundException('Execution not found');
+    }
+    return execution;
   }
 
   @Get('executions/:id/logs')
   async getExecutionLogs(@Query('tenantId') tenantId: string, @Param('id') id: string) {
-    return this.eventBus.getExecutionLogs(tenantId, id);
+    const logs = await this.eventBus.getExecutionLogs(tenantId, id);
+    return logs;
   }
 
   // ==================== TAG ENDPOINTS ====================

@@ -13,6 +13,7 @@ import {
   WaitConfig,
   EndConfig,
   HttpRequestConfig,
+  HttpScrapeConfig,
   ManageLabelsConfig,
   CodeConfig,
   EditFieldsConfig,
@@ -81,6 +82,9 @@ export class NodeExecutorService {
 
       case WorkflowNodeType.HTTP_REQUEST:
         return this.executeHttpRequest(node, context, edges);
+
+      case WorkflowNodeType.HTTP_SCRAPE:
+        return this.executeHttpScrape(node, context, edges);
 
       case WorkflowNodeType.CODE:
         return this.executeCode(node, context, edges);
@@ -707,6 +711,209 @@ export class NodeExecutorService {
         shouldWait: false,
         output: { [saveAs]: errorResponse },
       };
+    }
+  }
+
+  /**
+   * Execute HTTP_SCRAPE node
+   */
+  private async executeHttpScrape(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+  ): Promise<NodeExecutionResult> {
+    const config = node.config as HttpScrapeConfig;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const puppeteer = require('puppeteer');
+
+    // Interpolate URL
+    const url = this.contextService.interpolate(config.url, context);
+
+    let browser: any = null;
+    let page: any = null;
+
+    try {
+      // Launch browser with better stealth settings
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--disable-gpu',
+          '--disable-features=IsolateOrigins,site-per-process',
+        ],
+      });
+
+      page = await browser.newPage();
+
+      // Set default user agent to avoid detection
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      );
+
+      // Set viewport if configured, otherwise use default
+      await page.setViewport({
+        width: config.viewport?.width || 1920,
+        height: config.viewport?.height || 1080,
+      });
+
+      // Set default headers to mimic a real browser
+      const defaultHeaders: Record<string, string> = {
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0',
+      };
+
+      // Merge with custom headers if provided
+      if (config.headers && config.headers.length > 0) {
+        config.headers.forEach((h) => {
+          if (h.key && h.value) {
+            defaultHeaders[h.key] = this.contextService.interpolate(h.value, context);
+          }
+        });
+      }
+
+      await page.setExtraHTTPHeaders(defaultHeaders);
+
+      // Navigate to URL
+      const timeout = config.timeout || 60000;
+      await page.goto(url, {
+        waitUntil: config.waitFor || 'networkidle2',
+        timeout,
+      });
+
+      // Wait for specific selector if configured
+      if (config.waitFor === 'selector' && config.waitSelector) {
+        const waitTimeout = config.waitTimeout || 30000;
+        await page.waitForSelector(config.waitSelector, { timeout: waitTimeout });
+      }
+
+      // Scroll page to trigger lazy-loaded content (useful for dynamic pages)
+      await page.evaluate(() => {
+        return new Promise<void>((resolve) => {
+          let totalHeight = 0;
+          const distance = 100;
+          const timer = setInterval(() => {
+            const scrollHeight = document.body.scrollHeight;
+            window.scrollBy(0, distance);
+            totalHeight += distance;
+
+            if (totalHeight >= scrollHeight) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, 100);
+        });
+      });
+
+      // Wait a bit after scrolling for content to load
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Execute custom script if provided
+      let scriptResult: any = null;
+      if (config.executeScript) {
+        const interpolatedScript = this.contextService.interpolate(config.executeScript, context);
+        scriptResult = await page.evaluate((script: string) => {
+          return eval(script);
+        }, interpolatedScript);
+      }
+
+      // Extract data
+      let extractedData: any = null;
+      if (config.extractSelector) {
+        if (config.extractType === 'json') {
+          extractedData = await page.evaluate((selector: string) => {
+            const element = document.querySelector(selector);
+            if (!element) return null;
+            try {
+              return JSON.parse(element.textContent || '');
+            } catch {
+              return null;
+            }
+          }, config.extractSelector);
+        } else if (config.extractType === 'text') {
+          extractedData = await page.evaluate((selector: string) => {
+            const element = document.querySelector(selector);
+            return element ? element.textContent : null;
+          }, config.extractSelector);
+        } else {
+          // html (default)
+          extractedData = await page.evaluate((selector: string) => {
+            const element = document.querySelector(selector);
+            return element ? element.innerHTML : null;
+          }, config.extractSelector);
+        }
+      } else {
+        // Extract full page HTML if no selector specified
+        extractedData = await page.content();
+      }
+
+      // Take screenshot if requested
+      let screenshot: string | null = null;
+      if (config.screenshot) {
+        screenshot = await page.screenshot({ encoding: 'base64' });
+      }
+
+      // Prepare response object
+      const scrapeResponse = {
+        url,
+        html: extractedData,
+        scriptResult,
+        screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
+        title: await page.title(),
+        timestamp: new Date().toISOString(),
+      };
+
+      // Save response to context
+      const saveAs = config.saveResponseAs || 'scrapeResponse';
+      this.contextService.setVariable(context, saveAs, scrapeResponse);
+
+      // Find next node
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: { [saveAs]: scrapeResponse },
+      };
+    } catch (error: any) {
+      const errorResponse = {
+        error: true,
+        message: error.message,
+        name: error.name,
+        url,
+      };
+
+      const saveAs = config.saveResponseAs || 'scrapeResponse';
+      this.contextService.setVariable(context, saveAs, errorResponse);
+
+      // Continue to next node even on error
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: { [saveAs]: errorResponse },
+      };
+    } finally {
+      // Clean up browser resources
+      if (page) {
+        await page.close().catch(() => {});
+      }
+      if (browser) {
+        await browser.close().catch(() => {});
+      }
     }
   }
 
