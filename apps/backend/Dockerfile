@@ -55,14 +55,16 @@ COPY apps/backend ./apps/backend
 # Install ONLY production deps
 RUN pnpm install --prod --frozen-lockfile
 
-# Copy build artifacts (inclui Prisma Client gerado)
-COPY --from=base /app/packages/shared/dist ./packages/shared/dist
-COPY --from=base /app/apps/backend/dist ./apps/backend/dist
-COPY --from=base /app/apps/backend/node_modules/.prisma ./apps/backend/node_modules/.prisma
-COPY --from=base /app/apps/backend/node_modules/@prisma ./apps/backend/node_modules/@prisma
-
 # Prisma CLI (somente para migrate deploy)
 RUN npm install -g prisma@^5.8.0
+
+# Copy build artifacts
+COPY --from=base /app/packages/shared/dist ./packages/shared/dist
+COPY --from=base /app/apps/backend/dist ./apps/backend/dist
+
+# Generate Prisma Client in production stage
+WORKDIR /app/apps/backend
+RUN prisma generate
 
 # Entrypoint
 COPY apps/backend/docker-entrypoint.sh /app/apps/backend/docker-entrypoint.sh
