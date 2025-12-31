@@ -71,48 +71,70 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
     console.log(`Initializing WhatsApp session ${sessionId} for tenant ${tenantId}`);
 
     const sessionPath = this.configService.get('WHATSAPP_SESSION_PATH', './.wwebjs_auth');
+    const executablePath = this.configService.get('PUPPETEER_EXECUTABLE_PATH');
+
+    // Validate executable path if provided
+    if (executablePath) {
+      const fs = await import('fs/promises');
+      try {
+        const stats = await fs.stat(executablePath);
+        if (!stats.isFile()) {
+          throw new Error(`Executable path ${executablePath} is not a file`);
+        }
+      } catch (error: any) {
+        console.error(`Invalid Puppeteer executable path: ${executablePath}`, error.message);
+        throw new Error(`Invalid Puppeteer executable path: ${error.message}`);
+      }
+    }
+
+    const puppeteerConfig: any = {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-client-side-phishing-detection',
+        '--disable-default-apps',
+        '--disable-features=TranslateUI',
+        '--disable-hang-monitor',
+        '--disable-ipc-flooding-protection',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-renderer-backgrounding',
+        '--disable-sync',
+        '--disable-translate',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--safebrowsing-disable-auto-update',
+        '--enable-automation',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        '--disable-features=VizDisplayCompositor',
+      ],
+      timeout: 60000,
+      ignoreDefaultArgs: ['--disable-extensions'],
+    };
+
+    if (executablePath) {
+      puppeteerConfig.executablePath = executablePath;
+    }
 
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: sessionId,
         dataPath: sessionPath,
       }),
-      puppeteer: {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-extensions',
-          '--disable-background-networking',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-breakpad',
-          '--disable-client-side-phishing-detection',
-          '--disable-default-apps',
-          '--disable-features=TranslateUI',
-          '--disable-hang-monitor',
-          '--disable-ipc-flooding-protection',
-          '--disable-popup-blocking',
-          '--disable-prompt-on-repost',
-          '--disable-renderer-backgrounding',
-          '--disable-sync',
-          '--disable-translate',
-          '--metrics-recording-only',
-          '--mute-audio',
-          '--no-default-browser-check',
-          '--safebrowsing-disable-auto-update',
-          '--enable-automation',
-          '--password-store=basic',
-          '--use-mock-keychain',
-        ],
-        executablePath: this.configService.get('PUPPETEER_EXECUTABLE_PATH'),
-        timeout: 60000,
-      },
+      puppeteer: puppeteerConfig,
     });
 
     // Store session
@@ -128,7 +150,27 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
 
     // Initialize client
     console.log(`Starting WhatsApp client for session ${sessionId}...`);
-    await client.initialize();
+    try {
+      await client.initialize();
+    } catch (error: any) {
+      // Clean up session on initialization failure
+      this.sessions.delete(sessionId);
+      
+      const errorMessage = error.message || String(error);
+      console.error(`Failed to initialize WhatsApp client for session ${sessionId}:`, errorMessage);
+      
+      // Check for ELOOP error specifically
+      if (errorMessage.includes('ELOOP') || error.code === 'ELOOP') {
+        const pathInfo = executablePath ? ` (executable path: ${executablePath})` : '';
+        throw new Error(`Symbolic link loop detected when launching Chromium${pathInfo}. Please ensure PUPPETEER_EXECUTABLE_PATH points to a direct file path, not a symlink.`);
+      }
+      
+      await this.whatsappService.updateSession(sessionId, {
+        status: WhatsappSessionStatus.ERROR,
+      });
+      
+      throw error;
+    }
 
     // Update status
     await this.whatsappService.updateSession(sessionId, {

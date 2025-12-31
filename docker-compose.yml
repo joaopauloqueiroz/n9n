@@ -16,7 +16,7 @@ services:
       - FRONTEND_URL=https://n9n.archcode.space
       - CORS_ORIGIN=https://n9n.archcode.space
       - WHATSAPP_SESSION_PATH=/app/apps/backend/.wwebjs_auth
-      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
     ports:
       - "3041:3041"
     volumes:
