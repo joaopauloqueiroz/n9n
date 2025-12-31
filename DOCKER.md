@@ -134,3 +134,4 @@ For production deployments:
 6. **Configure proper resource limits** in `docker-compose.yml`
 7. **Use managed database services** instead of containerized PostgreSQL for production
 
+

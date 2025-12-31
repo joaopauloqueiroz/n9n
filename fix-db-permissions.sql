@@ -22,3 +22,4 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO n9n;
 -- Make n9n the owner of the schema (alternative approach)
 -- ALTER SCHEMA public OWNER TO n9n;
 
+

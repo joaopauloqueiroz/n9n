@@ -126,3 +126,4 @@ ALTER TABLE "whatsapp_sessions" ADD CONSTRAINT "whatsapp_sessions_tenantId_fkey"
 
 
 
+
