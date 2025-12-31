@@ -57,7 +57,7 @@ export default function NodeExecutionPanel({
       setLoading(true)
       
       // Load execution details
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space'
       const executionUrl = `${API_URL}/api/executions/${executionId}?tenantId=${tenantId}`
       const executionResponse = await fetch(executionUrl)
       if (executionResponse.ok) {
@@ -93,7 +93,7 @@ export default function NodeExecutionPanel({
     
     try {
       console.log('[loadWorkflowNodes] Loading nodes for workflow:', executionData.workflowId)
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space3001'
       const workflowUrl = `${API_URL}/api/workflows/${executionData.workflowId}?tenantId=${tenantId}`
       const response = await fetch(workflowUrl)
       if (response.ok) {

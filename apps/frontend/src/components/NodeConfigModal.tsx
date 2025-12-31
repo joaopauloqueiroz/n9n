@@ -15,7 +15,7 @@ interface NodeConfigModalProps {
 
 // Component for SET_TAGS configuration
 function SetTagsConfig({ config, setConfig, tenantId }: any) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space'
   const [availableTags, setAvailableTags] = useState<any[]>([])
   const [loadingTags, setLoadingTags] = useState(false)
 
@@ -337,7 +337,7 @@ export default function NodeConfigModal({
   onSave,
   embedded = false,
 }: NodeConfigModalProps) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.n9n.archcode.space'
   const [activeTab, setActiveTab] = useState<'parameters' | 'settings'>('parameters')
   const [config, setConfig] = useState<any>({})
   const [sessions, setSessions] = useState<any[]>([])
