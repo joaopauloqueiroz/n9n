@@ -59,6 +59,8 @@ else
   # Run migrations with verbose output
   echo "Running: prisma migrate deploy"
   echo "DATABASE_URL is set: ${DATABASE_URL:+yes}"
+  
+  # Try to run migrations
   prisma migrate deploy
   MIGRATION_EXIT_CODE=$?
   
