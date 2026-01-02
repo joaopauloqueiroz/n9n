@@ -1311,13 +1311,13 @@ export class NodeExecutorService {
           // Get all text from multiple elements
           getAllText: (selector: string) => {
             const elements = Array.from(doc.querySelectorAll(selector));
-            return elements.map(el => el.textContent?.trim() || '');
+            return elements.map((el: any) => el.textContent?.trim() || '');
           },
 
           // Get all attributes from multiple elements
           getAllAttrs: (selector: string, attrName: string) => {
             const elements = Array.from(doc.querySelectorAll(selector));
-            return elements.map(el => el.getAttribute(attrName) || '');
+            return elements.map((el: any) => el.getAttribute(attrName) || '');
           },
 
           // Direct access to document for advanced queries
