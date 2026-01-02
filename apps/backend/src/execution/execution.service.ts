@@ -132,7 +132,7 @@ export class ExecutionService {
     });
 
     const mapped = executions.map(this.mapToExecution.bind(this));
-    console.log('📊 [getWorkflowExecutions] First execution:', mapped[0]);
+
     return mapped;
   }
 

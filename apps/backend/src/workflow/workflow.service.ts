@@ -1,6 +1,6 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType, TriggerManualConfig } from '@n9n/shared';
+import { Workflow, WorkflowNode, WorkflowEdge, WorkflowNodeType, TriggerManualConfig, WorkflowExecution } from '@n9n/shared';
 import { ExecutionEngineService } from '../execution/execution-engine.service';
 
 @Injectable()
@@ -9,7 +9,7 @@ export class WorkflowService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => ExecutionEngineService))
     private executionEngine: ExecutionEngineService,
-  ) {}
+  ) { }
 
   /**
    * Create workflow
@@ -204,8 +204,13 @@ export class WorkflowService {
 
     // Find the trigger node
     const triggerNode = workflow.nodes.find((n) => n.id === nodeId);
-    if (!triggerNode || triggerNode.type !== WorkflowNodeType.TRIGGER_MANUAL) {
-      throw new Error(`Trigger node ${nodeId} not found or is not a TRIGGER_MANUAL node`);
+    if (!triggerNode) {
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    // Allow TRIGGER_MANUAL and LOOP nodes to be executed
+    if (triggerNode.type !== WorkflowNodeType.TRIGGER_MANUAL && triggerNode.type !== WorkflowNodeType.LOOP) {
+      throw new Error(`Node ${nodeId} must be a TRIGGER_MANUAL or LOOP node to be executed manually`);
     }
 
     const config = triggerNode.config as TriggerManualConfig;
@@ -248,6 +253,110 @@ export class WorkflowService {
     console.log(`[MANUAL TRIGGER] Started execution ${execution.id} for workflow ${workflowId}`);
 
     return { executionId: execution.id };
+  }
+
+  /**
+   * Test a node from the current execution context
+   */
+  async testNodeFromContext(
+    tenantId: string,
+    workflowId: string,
+    nodeId: string,
+    executionId?: string,
+    nodeConfig?: any,
+  ): Promise<{ executionId: string }> {
+    // Get the workflow
+    const workflow = await this.getWorkflow(tenantId, workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow ${workflowId} not found`);
+    }
+
+    // Find the node
+    const node = workflow.nodes.find((n) => n.id === nodeId);
+    if (!node) {
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    // If nodeConfig is provided, use it (for testing with unsaved config)
+    if (nodeConfig) {
+      node.config = { ...node.config, ...nodeConfig };
+    }
+    
+    // Validate node config for LOOP nodes
+    if (node.type === 'LOOP' && (!node.config || !node.config.loopMode)) {
+      throw new Error(`Loop node configuration is missing. Please save the node configuration before testing. Config: ${JSON.stringify(node.config)}`);
+    }
+
+    // Get the latest execution or the specified one
+    let existingExecution;
+    if (executionId) {
+      existingExecution = await this.prisma.workflowExecution.findFirst({
+        where: { id: executionId, tenantId, workflowId },
+      });
+    } else {
+      // Get the most recent execution (any status) for this workflow
+      existingExecution = await this.prisma.workflowExecution.findFirst({
+        where: { tenantId, workflowId },
+        orderBy: { startedAt: 'desc' },
+      });
+    }
+
+    if (!existingExecution) {
+      throw new Error('No execution found. Please run the workflow first to generate context.');
+    }
+
+
+    // Find a WhatsApp session to use - prefer the one from existing execution, otherwise find any connected
+    let session;
+    if (existingExecution.sessionId) {
+      session = await this.prisma.whatsappSession.findFirst({
+        where: { id: existingExecution.sessionId, tenantId },
+      });
+    }
+    
+    // If no session from existing execution, try to find any connected session
+    if (!session) {
+      session = await this.prisma.whatsappSession.findFirst({
+        where: { tenantId, status: 'CONNECTED' },
+      });
+    }
+
+    // For testing, we can create a mock session ID if none exists
+    // This allows testing nodes that don't require WhatsApp interaction
+    const sessionId = session?.id || `test-session-${tenantId}`;
+    const contactId = existingExecution.contactId || `test-${nodeId}-${Date.now()}`;
+
+    // Create a new execution with the same context but starting from the specified node
+    const newExecution = await this.prisma.workflowExecution.create({
+      data: {
+        tenantId,
+        workflowId,
+        sessionId,
+        contactId,
+        currentNodeId: nodeId,
+        status: 'RUNNING',
+        context: existingExecution.context as any, // Reuse context from previous execution
+        interactionCount: 0,
+        startedAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      },
+    });
+
+    console.log(`[TEST NODE] Created test execution ${newExecution.id} starting from node ${nodeId}`);
+    console.log(`[TEST NODE] Using context from execution ${existingExecution.id}`);
+
+    // Start execution from this node using the execution engine
+    await this.executionEngine.testNodeExecution(
+      {
+        ...newExecution,
+        status: newExecution.status as any,
+        context: existingExecution.context as any,
+      } as WorkflowExecution,
+      workflow,
+    );
+
+    return { executionId: newExecution.id };
   }
 }
 

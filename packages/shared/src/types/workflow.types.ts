@@ -16,6 +16,8 @@ export enum WorkflowNodeType {
   SWITCH = 'SWITCH',
   WAIT_REPLY = 'WAIT_REPLY',
   WAIT = 'WAIT',
+  LOOP = 'LOOP',
+  COMMAND = 'COMMAND',
   END = 'END',
 }
 
@@ -116,6 +118,8 @@ export interface TriggerScheduleConfig {
 export interface SendMessageConfig {
   message: string; // supports {{variables.name}} syntax
   delay?: number; // milliseconds
+  sessionId?: string; // Optional: Override session
+  to?: string; // Optional: Override recipient (phone number)
 }
 
 export interface SendMediaConfig {
@@ -125,6 +129,8 @@ export interface SendMediaConfig {
   fileName?: string; // optional filename for document, supports {{variables.name}} syntax
   sendAudioAsVoice?: boolean; // if true and mediaType is audio, send as voice message (PTT)
   delay?: number; // milliseconds
+  sessionId?: string; // Optional: Override session
+  to?: string; // Optional: Override recipient (phone number)
 }
 
 export interface SendButtonsConfig {
@@ -237,6 +243,14 @@ export interface CodeConfig {
   language?: 'javascript' | 'python'; // Future: support multiple languages
 }
 
+export interface CommandConfig {
+  command: string; // Full command to execute (can include arguments), supports {{variables.name}} syntax
+  timeout?: number; // Timeout in milliseconds, default 30000
+  saveOutputAs?: string; // Variable name to save stdout, default 'commandOutput'
+  saveErrorAs?: string; // Variable name to save stderr, default 'commandError'
+  saveExitCodeAs?: string; // Variable name to save exit code, default 'commandExitCode'
+}
+
 export interface TriggerManualConfig {
   sessionId?: string; // Optional: specific WhatsApp session to use
   testData?: Record<string, any>; // Optional: test data to inject into context
@@ -265,5 +279,14 @@ export interface WaitConfig {
 export interface SetTagsConfig {
   action: 'add' | 'remove' | 'set' | 'clear'; // add: adiciona tags, remove: remove tags, set: substitui todas, clear: limpa todas
   tags: string[]; // Tags to add/remove/set
+}
+
+export interface LoopConfig {
+  loopMode: 'array' | 'count'; // Iterate over array or fixed count
+  arraySource?: string; // Variable containing the array (e.g., "scrapeResponse.scriptResult")
+  itemVariableName?: string; // Variable name for current item (default: "item")
+  indexVariableName?: string; // Variable name for index (default: "index")
+  count?: number; // For loopMode === 'count'
+  batchSize?: number; // Process in batches (optional)
 }
 

@@ -42,6 +42,8 @@ interface WorkflowCanvasProps {
   onManualTrigger?: (nodeId: string) => void
   executedNodes?: Set<string>
   failedNodes?: Set<string>
+  executedEdges?: Set<string>
+  failedEdges?: Set<string>
 }
 
 export default function WorkflowCanvas({
@@ -56,6 +58,8 @@ export default function WorkflowCanvas({
   onManualTrigger,
   executedNodes = new Set(),
   failedNodes = new Set(),
+  executedEdges = new Set(),
+  failedEdges = new Set(),
 }: WorkflowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
@@ -80,26 +84,58 @@ export default function WorkflowCanvas({
       },
     }))
 
-    const flowEdges: Edge[] = initialEdges.map((edge) => ({
-      id: edge.id,
-      type: 'custom',
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.condition || undefined, // Use condition as sourceHandle for CONDITION nodes
-      label: edge.label || (edge.condition === 'true' ? 'True' : edge.condition === 'false' ? 'False' : undefined),
-      animated: currentNodeId === edge.source,
-      style: currentNodeId === edge.source 
-        ? { stroke: '#00FF88', strokeWidth: 2 }
-        : edge.condition === 'true'
-        ? { stroke: '#4ade80', strokeWidth: 2 } // Green for True
-        : edge.condition === 'false'
-        ? { stroke: '#f87171', strokeWidth: 2 } // Red for False
-        : undefined,
-    }))
+    const flowEdges: Edge[] = initialEdges.map((edge) => {
+      // Use edge.id if available, otherwise create from source-target
+      const edgeId = edge.id || `${edge.source}-${edge.target}`
+      const edgeKey = `${edge.source}-${edge.target}` // Key for tracking
+      const isExecuted = executedEdges.has(edgeKey) || executedEdges.has(edgeId)
+      const isFailed = failedEdges.has(edgeKey) || failedEdges.has(edgeId)
+      const isCurrentlyActive = currentNodeId === edge.source
+      
+      // Determine edge color and style based on execution status
+      let edgeStyle: any = {}
+      
+      if (isFailed) {
+        // Red for failed edges - thicker and more visible
+        edgeStyle.stroke = '#ef4444'
+        edgeStyle.strokeWidth = 3
+      } else if (isExecuted) {
+        // Green for successfully executed edges - thicker and more visible
+        edgeStyle.stroke = '#22c55e'
+        edgeStyle.strokeWidth = 3
+      } else if (isCurrentlyActive) {
+        // Cyan for currently active edge - animated
+        edgeStyle.stroke = '#00FF88'
+        edgeStyle.strokeWidth = 2.5
+      } else if (edge.condition === 'true') {
+        // Green tint for True condition edges
+        edgeStyle.stroke = '#4ade80'
+        edgeStyle.strokeWidth = 2
+      } else if (edge.condition === 'false') {
+        // Red tint for False condition edges
+        edgeStyle.stroke = '#f87171'
+        edgeStyle.strokeWidth = 2
+      } else {
+        // Default gray for non-executed edges
+        edgeStyle.stroke = '#3a3a3a'
+        edgeStyle.strokeWidth = 2
+      }
+      
+      return {
+        id: edge.id,
+        type: 'custom',
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.condition || undefined, // Use condition as sourceHandle for CONDITION nodes
+        label: edge.label || (edge.condition === 'true' ? 'True' : edge.condition === 'false' ? 'False' : undefined),
+        animated: isCurrentlyActive,
+        style: edgeStyle,
+      }
+    })
 
     setNodes(flowNodes)
     setEdges(flowEdges)
-  }, [initialNodes, initialEdges, currentNodeId, executionStatus, executedNodes, failedNodes])
+  }, [initialNodes, initialEdges, currentNodeId, executionStatus, executedNodes, failedNodes, executedEdges, failedEdges])
 
   const onConnect = useCallback(
     (connection: Connection) => {

@@ -18,9 +18,14 @@ import {
   CodeConfig,
   EditFieldsConfig,
   SetTagsConfig,
+  LoopConfig,
+  CommandConfig,
 } from '@n9n/shared';
 import { ContextService } from './context.service';
 import { ContactTagsService } from './contact-tags.service';
+import { JSDOM } from 'jsdom';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
 export interface NodeExecutionResult {
   nextNodeId: string | null;
@@ -51,7 +56,7 @@ export class NodeExecutorService {
     private contextService: ContextService,
     private configService: ConfigService,
     private contactTagsService: ContactTagsService,
-  ) {}
+  ) { }
 
   setWhatsappSessionManager(manager: any) {
     this.whatsappSessionManager = manager;
@@ -110,6 +115,13 @@ export class NodeExecutorService {
       case WorkflowNodeType.SET_TAGS:
         return await this.executeSetTags(node, context, edges, sessionId, contactId);
 
+      case WorkflowNodeType.LOOP:
+        return this.executeLoop(node, context, edges);
+
+      case WorkflowNodeType.COMMAND:
+      case 'COMMAND':
+        return await this.executeCommand(node, context, edges);
+
       case WorkflowNodeType.END:
         return this.executeEnd(node, context);
 
@@ -125,16 +137,25 @@ export class NodeExecutorService {
     node: WorkflowNode,
     context: ExecutionContext,
     edges: any[],
-    sessionId?: string,
-    contactId?: string,
+    defaultSessionId?: string,
+    defaultContactId?: string,
   ): Promise<NodeExecutionResult> {
     const config = node.config as SendMessageConfig;
 
     // Interpolate message with variables
     const message = this.contextService.interpolate(config.message, context);
 
+    // Determine session ID (config overrides default)
+    const sessionId = config.sessionId || defaultSessionId;
+
+    // Determine recipient (config overrides default)
+    let contactId = defaultContactId;
+    if (config.to) {
+      contactId = this.contextService.interpolate(config.to, context);
+    }
+
     // Store message in output
-    this.contextService.setOutput(context, { message });
+    this.contextService.setOutput(context, { message, sentTo: contactId, sessionId });
 
     // Add delay if configured
     if (config.delay) {
@@ -163,8 +184,8 @@ export class NodeExecutorService {
     node: WorkflowNode,
     context: ExecutionContext,
     edges: any[],
-    sessionId?: string,
-    contactId?: string,
+    defaultSessionId?: string,
+    defaultContactId?: string,
   ): Promise<NodeExecutionResult> {
     const config = node.config as SendMediaConfig;
 
@@ -173,13 +194,24 @@ export class NodeExecutorService {
     const caption = config.caption ? this.contextService.interpolate(config.caption, context) : undefined;
     const fileName = config.fileName ? this.contextService.interpolate(config.fileName, context) : undefined;
 
+    // Determine session ID (config overrides default)
+    const sessionId = config.sessionId || defaultSessionId;
+
+    // Determine recipient (config overrides default)
+    let contactId = defaultContactId;
+    if (config.to) {
+      contactId = this.contextService.interpolate(config.to, context);
+    }
+
     // Store in output
-    this.contextService.setOutput(context, { 
-      mediaUrl, 
+    this.contextService.setOutput(context, {
+      mediaUrl,
       mediaType: config.mediaType,
       caption,
       fileName,
       sendAudioAsVoice: config.sendAudioAsVoice,
+      sentTo: contactId,
+      sessionId,
     });
 
     // Add delay if configured
@@ -352,7 +384,7 @@ export class NodeExecutorService {
         const chatLabels = await this.whatsappSessionManager.getChatLabels(sessionId, contactId);
         const saveAs = config.saveLabelsAs || 'chatLabels';
         this.contextService.setVariable(context, saveAs, chatLabels);
-        
+
       } else if (action === 'add') {
         // Add labels
         if (config.labelIds && config.labelIds.length > 0) {
@@ -392,32 +424,23 @@ export class NodeExecutorService {
     // Check if expression uses string methods with multiple values
     let result = false;
     const expression = config.expression || '';
-    
-    console.log('[executeCondition] Expression:', expression);
-    
+
     // Match patterns like: value.toLowerCase().includes("word1, word2, word3".toLowerCase())
     // or: value.includes("word1, word2, word3")
     const multiValueMatch = expression.match(/(.+?)\.(includes|startsWith|endsWith)\("([^"]+)"(?:\.toLowerCase\(\))?\)/);
-    
-    console.log('[executeCondition] Regex match:', multiValueMatch);
-    
+
     if (multiValueMatch && multiValueMatch[3].includes(',')) {
       // Multiple values detected - check each one
       const [, value1, operator, value2String] = multiValueMatch;
       const values = value2String.split(',').map(v => v.trim());
-      
-      console.log('[executeCondition] Multiple values detected:', values);
-      
+
       for (const value of values) {
         const singleExpression = `${value1}.${operator}("${value}")`;
-        console.log('[executeCondition] Testing:', singleExpression);
         result = this.contextService.evaluateExpression(singleExpression, context);
-        console.log('[executeCondition] Result:', result);
         if (result) break; // Stop at first match
       }
     } else {
       // Single value or non-string operator - evaluate normally
-      console.log('[executeCondition] Single value, evaluating normally');
       result = this.contextService.evaluateExpression(expression, context);
     }
 
@@ -451,13 +474,13 @@ export class NodeExecutorService {
 
     for (let i = 0; i < rules.length; i++) {
       const rule = rules[i];
-      
+
       let result = false;
-      
+
       if (rule.operator.includes('(')) {
         // For string methods like includes(), support multiple values separated by comma
         const values = rule.value2.split(',').map((v: string) => v.trim().toLowerCase());
-        
+
         // Check if any of the values match
         for (const value of values) {
           const expression = `${rule.value1}.toLowerCase()${rule.operator}"${value}")`;
@@ -494,10 +517,10 @@ export class NodeExecutorService {
     const defaultEdge = edges.find(
       (e) => e.source === node.id && e.condition === 'default',
     );
-    
+
     const nextNodeId = defaultEdge ? defaultEdge.target : null;
-    
-    this.contextService.setOutput(context, { 
+
+    this.contextService.setOutput(context, {
       switchOutput: 'default',
       switchRuleIndex: -1,
     });
@@ -533,6 +556,106 @@ export class NodeExecutorService {
       onTimeout: config.onTimeout,
       timeoutTargetNodeId: config.timeoutTargetNodeId,
     };
+  }
+
+  /**
+   * Execute COMMAND node
+   */
+  private async executeCommand(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+  ): Promise<NodeExecutionResult> {
+    const config = node.config as CommandConfig;
+
+    // Interpolate command (can include full command with arguments)
+    const fullCommand = this.contextService.interpolate(config.command, context);
+
+    // Set timeout (default 30 seconds)
+    const timeout = config.timeout || 30000;
+
+    // Execute command
+    const execAsync = promisify(exec);
+    
+    try {
+      const options: any = {
+        timeout,
+        maxBuffer: 10 * 1024 * 1024, // 10MB max output
+      };
+
+      const { stdout, stderr } = await execAsync(fullCommand, options);
+      
+      // Save outputs to context variables
+      const outputVarName = config.saveOutputAs || 'commandOutput';
+      const errorVarName = config.saveErrorAs || 'commandError';
+      const exitCodeVarName = config.saveExitCodeAs || 'commandExitCode';
+
+      this.contextService.setVariable(context, outputVarName, stdout);
+      this.contextService.setVariable(context, errorVarName, stderr || '');
+      this.contextService.setVariable(context, exitCodeVarName, 0);
+
+      // Store in output
+      this.contextService.setOutput(context, {
+        stdout,
+        stderr: stderr || '',
+        exitCode: 0,
+        command: fullCommand,
+      });
+
+      // Find next node
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: {
+          stdout,
+          stderr: stderr || '',
+          exitCode: 0,
+          command: fullCommand,
+        },
+      };
+    } catch (error: any) {
+      // Handle timeout or other errors
+      const exitCode = error.code === 'ETIMEDOUT' ? -1 : error.code || 1;
+      const stderr = error.stderr || error.message || '';
+      const stdout = error.stdout || '';
+
+      // Save outputs to context variables
+      const outputVarName = config.saveOutputAs || 'commandOutput';
+      const errorVarName = config.saveErrorAs || 'commandError';
+      const exitCodeVarName = config.saveExitCodeAs || 'commandExitCode';
+
+      this.contextService.setVariable(context, outputVarName, stdout);
+      this.contextService.setVariable(context, errorVarName, stderr);
+      this.contextService.setVariable(context, exitCodeVarName, exitCode);
+
+      // Store in output
+      this.contextService.setOutput(context, {
+        stdout,
+        stderr,
+        exitCode,
+        command: fullCommand,
+        error: error.message,
+      });
+
+      // Find next node
+      const nextEdge = edges.find((e) => e.source === node.id);
+      const nextNodeId = nextEdge ? nextEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: {
+          stdout,
+          stderr,
+          exitCode,
+          command: fullCommand,
+          error: error.message,
+        },
+      };
+    }
   }
 
   /**
@@ -574,7 +697,7 @@ export class NodeExecutorService {
 
     // Prepare headers
     const headers: Record<string, string> = {};
-    
+
     // Add custom headers
     if (config.headers) {
       config.headers.forEach((h) => {
@@ -607,7 +730,7 @@ export class NodeExecutorService {
     let body: any = undefined;
     if (config.body && ['POST', 'PUT', 'PATCH'].includes(config.method)) {
       const interpolatedBody = this.contextService.interpolate(config.body, context);
-      
+
       if (config.bodyType === 'json') {
         try {
           body = JSON.parse(interpolatedBody);
@@ -691,7 +814,7 @@ export class NodeExecutorService {
       };
     } catch (error) {
       console.error('[HTTP_REQUEST] Error:', error);
-      
+
       // Save error to context
       const saveAs = config.saveResponseAs || 'httpResponse';
       const errorResponse = {
@@ -699,7 +822,7 @@ export class NodeExecutorService {
         message: error.message,
         name: error.name,
       };
-      
+
       this.contextService.setVariable(context, saveAs, errorResponse);
 
       // Continue to next node even on error
@@ -818,16 +941,7 @@ export class NodeExecutorService {
       // Wait a bit after scrolling for content to load
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Execute custom script if provided
-      let scriptResult: any = null;
-      if (config.executeScript) {
-        const interpolatedScript = this.contextService.interpolate(config.executeScript, context);
-        scriptResult = await page.evaluate((script: string) => {
-          return eval(script);
-        }, interpolatedScript);
-      }
-
-      // Extract data
+      // Extract data FIRST (before executing script, so we can pass it to the script)
       let extractedData: any = null;
       if (config.extractSelector) {
         if (config.extractType === 'json') {
@@ -857,25 +971,151 @@ export class NodeExecutorService {
         extractedData = await page.content();
       }
 
+      // Prepare current scrapeResponse with extracted HTML (for use in script)
+      const currentScrapeResponse = {
+        url,
+        html: extractedData,
+        scriptResult: null,
+        screenshot: null,
+        title: await page.title(),
+        timestamp: new Date().toISOString(),
+      };
+
+      // Execute custom script if provided (now with access to current HTML)
+      let scriptResult: any = null;
+      if (config.executeScript) {
+        const interpolatedScript = this.contextService.interpolate(config.executeScript, context);
+
+        // Prepare variables and helper functions to inject into script context
+        // Include current scrapeResponse AND previous variables
+        const variablesToInject = {
+          // Current scrapeResponse with the HTML we just extracted
+          scrapeResponse: currentScrapeResponse,
+          // Previous scrapeResponse from context (if exists, from previous nodes)
+          previousScrapeResponse: context.variables.scrapeResponse || null,
+          contactTags: context.variables.contactTags || [],
+          triggerMessage: context.variables.triggerMessage || '',
+          // Add other common variables
+          ...(context.variables || {}),
+        };
+
+        try {
+          scriptResult = await page.evaluate(
+            (script: string, vars: any) => {
+              try {
+                // Inject variables into scope
+                const scrapeResponse = vars.scrapeResponse; // Current scrapeResponse with HTML
+                const previousScrapeResponse = vars.previousScrapeResponse; // Previous node's scrapeResponse
+                const contactTags = vars.contactTags || [];
+                const triggerMessage = vars.triggerMessage || '';
+
+                // Helper function to parse HTML string (useful for manipulating scrapeResponse.html)
+                function parseHTML(htmlString: string) {
+                  const parser = new DOMParser();
+                  return parser.parseFromString(htmlString, 'text/html');
+                }
+
+                // Helper: Get document from HTML string
+                function getHTMLDocument(htmlString: string) {
+                  return parseHTML(htmlString);
+                }
+
+                // Helper: Convert NodeList to Array (for easier manipulation)
+                function nodeListToArray(nodeList: NodeListOf<Element> | NodeList): Element[] {
+                  return Array.from(nodeList as NodeListOf<Element>);
+                }
+
+                // Execute user's script with variables and helpers available
+                // Wrap the script in a function so return statements work correctly
+                // User can use:
+                // - document (current page DOM)
+                // - scrapeResponse.html (current page HTML as string)
+                // - parseHTML(scrapeResponse.html) (parse current HTML)
+                // - previousScrapeResponse.html (previous node's HTML)
+                // - nodeListToArray() to convert NodeList to Array
+                const wrappedScript = `
+                (function() {
+                  ${script}
+                })();
+              `;
+                const result = eval(wrappedScript);
+
+                // If result is a NodeList, convert to array for serialization
+                if (result && typeof result === 'object' && 'length' in result && result.length !== undefined) {
+                  try {
+                    return Array.from(result as any).map((node: any) => {
+                      if (node && typeof node === 'object' && node.nodeType !== undefined) {
+                        // Convert DOM node to serializable object
+                        return {
+                          tagName: node.tagName || null,
+                          textContent: node.textContent || null,
+                          innerHTML: node.innerHTML || null,
+                          outerHTML: node.outerHTML || null,
+                          attributes: node.attributes ? Array.from(node.attributes).map((attr: any) => ({
+                            name: attr.name,
+                            value: attr.value,
+                          })) : [],
+                        };
+                      }
+                      return node;
+                    });
+                  } catch (e) {
+                    // If conversion fails, return as is
+                    return result;
+                  }
+                }
+
+                return result;
+              } catch (error: any) {
+                // Return error information so it can be handled upstream
+                return {
+                  error: true,
+                  name: error.name || 'Error',
+                  message: error.message || String(error),
+                  stack: error.stack,
+                };
+              }
+            },
+            interpolatedScript,
+            variablesToInject,
+          );
+
+          // If script returned an error object, log it but don't throw
+          if (scriptResult && typeof scriptResult === 'object' && scriptResult.error) {
+            console.error('[HTTP_SCRAPE] Script execution error:', scriptResult.message);
+            // Keep scriptResult as error object - it will be included in output
+          }
+        } catch (error: any) {
+          // If page.evaluate itself throws an error (e.g., serialization error)
+          console.error('[HTTP_SCRAPE] Error executing script:', error);
+          scriptResult = {
+            error: true,
+            name: error.name || 'Error',
+            message: error.message || String(error),
+          };
+        }
+      }
+
       // Take screenshot if requested
       let screenshot: string | null = null;
       if (config.screenshot) {
         screenshot = await page.screenshot({ encoding: 'base64' });
       }
 
-      // Prepare response object
+      // Prepare response object (update with scriptResult and screenshot)
       const scrapeResponse = {
-        url,
-        html: extractedData,
+        ...currentScrapeResponse,
         scriptResult,
         screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
-        title: await page.title(),
-        timestamp: new Date().toISOString(),
       };
 
-      // Save response to context
+      // Save response to context variables
       const saveAs = config.saveResponseAs || 'scrapeResponse';
       this.contextService.setVariable(context, saveAs, scrapeResponse);
+
+      // Save output to context - just the scrapeResponse
+      // User can manipulate it in another node later
+      this.contextService.setOutput(context, { [saveAs]: scrapeResponse });
 
       // Find next node
       const nextEdge = edges.find((e) => e.source === node.id);
@@ -897,6 +1137,9 @@ export class NodeExecutorService {
       const saveAs = config.saveResponseAs || 'scrapeResponse';
       this.contextService.setVariable(context, saveAs, errorResponse);
 
+      // Save error output to context
+      this.contextService.setOutput(context, { [saveAs]: errorResponse });
+
       // Continue to next node even on error
       const nextEdge = edges.find((e) => e.source === node.id);
       const nextNodeId = nextEdge ? nextEdge.target : null;
@@ -909,10 +1152,10 @@ export class NodeExecutorService {
     } finally {
       // Clean up browser resources
       if (page) {
-        await page.close().catch(() => {});
+        await page.close().catch(() => { });
       }
       if (browser) {
-        await browser.close().catch(() => {});
+        await browser.close().catch(() => { });
       }
     }
   }
@@ -940,7 +1183,7 @@ export class NodeExecutorService {
       } else {
         // Fields mode: process each operation
         const operations = config.operations || [];
-        
+
         // Start with input data if includeOtherFields is true
         if (config.includeOtherFields !== false) {
           result = { ...(context.output || {}) };
@@ -949,17 +1192,13 @@ export class NodeExecutorService {
         // Apply each field operation
         operations.forEach((operation) => {
           const fieldName = operation.name;
-          
-          console.log('[EDIT_FIELDS] Processing field:', fieldName);
-          console.log('[EDIT_FIELDS] Raw value:', operation.value);
-          console.log('[EDIT_FIELDS] Context variables:', JSON.stringify(context.variables, null, 2));
-          
+
+
           let fieldValue: any = this.contextService.interpolate(
             operation.value,
             context,
           );
-          
-          console.log('[EDIT_FIELDS] Interpolated value:', fieldValue);
+
 
           // Convert to the specified type
           switch (operation.type) {
@@ -1004,6 +1243,10 @@ export class NodeExecutorService {
   /**
    * Execute CODE node
    */
+  /**
+   * Execute CODE node - runs user-provided JavaScript code
+   * Updated: 2026-01-02 - Fixed helper functions to always be available
+   */
   private executeCode(
     node: WorkflowNode,
     context: ExecutionContext,
@@ -1017,17 +1260,178 @@ export class NodeExecutorService {
       const globals = context.globals || {};
       const input = context.input || {};
 
-      // Create a safe execution function
-      const executeUserCode = new Function('variables', 'globals', 'input', config.code);
+      // Helper function to parse HTML string (for manipulating scrapeResponse.html)
+      // This will be injected into the code execution context
+      const parseHTML = (htmlString: string) => {
+        const dom = new JSDOM(htmlString);
+        return dom.window.document;
+      };
 
-      // Execute the code
-      const result = executeUserCode(variables, globals, input);
+      const getHTMLDocument = (htmlString: string) => {
+        return parseHTML(htmlString);
+      };
 
-      // Save result to context
-      this.contextService.setVariable(context, 'codeOutput', result);
+      const nodeListToArray = (nodeList: any) => {
+        return Array.from(nodeList);
+      };
 
-      // Set output
-      this.contextService.setOutput(context, { codeOutput: result });
+      // Enhanced helper functions for easier HTML manipulation
+      const createHelpers = (htmlString: string) => {
+        const doc = parseHTML(htmlString);
+
+        return {
+          // querySelector shortcut - returns first matching element
+          $: (selector: string) => doc.querySelector(selector),
+
+          // querySelectorAll shortcut - returns array of matching elements
+          $$: (selector: string) => Array.from(doc.querySelectorAll(selector)),
+
+          // Get text content from selector or element
+          getText: (selectorOrElement: string | any) => {
+            const el = typeof selectorOrElement === 'string'
+              ? doc.querySelector(selectorOrElement)
+              : selectorOrElement;
+            return el?.textContent?.trim() || '';
+          },
+
+          // Get attribute from selector or element
+          getAttr: (selectorOrElement: string | any, attrName: string) => {
+            const el = typeof selectorOrElement === 'string'
+              ? doc.querySelector(selectorOrElement)
+              : selectorOrElement;
+            return el?.getAttribute(attrName) || '';
+          },
+
+          // Map over elements and extract data
+          mapElements: (selector: string, mapFn: (el: any, index: number) => any) => {
+            const elements = Array.from(doc.querySelectorAll(selector));
+            return elements.map(mapFn);
+          },
+
+          // Get all text from multiple elements
+          getAllText: (selector: string) => {
+            const elements = Array.from(doc.querySelectorAll(selector));
+            return elements.map(el => el.textContent?.trim() || '');
+          },
+
+          // Get all attributes from multiple elements
+          getAllAttrs: (selector: string, attrName: string) => {
+            const elements = Array.from(doc.querySelectorAll(selector));
+            return elements.map(el => el.getAttribute(attrName) || '');
+          },
+
+          // Direct access to document for advanced queries
+          doc,
+        };
+      };
+
+      // Inject variables directly into scope (similar to HTTP_SCRAPE node)
+      // This allows users to access variables like scrapeResponse directly
+      // Also merge output from previous node into variables so stdout, stderr, etc. are available
+      const previousOutput = context.output || {};
+      const variablesToInject = {
+        scrapeResponse: variables.scrapeResponse || null,
+        contactTags: variables.contactTags || [],
+        triggerMessage: variables.triggerMessage || '',
+        // Include output from previous node (e.g., stdout, stderr from COMMAND)
+        ...previousOutput,
+        // Include all other variables from context (variables take precedence over output)
+        ...variables,
+      };
+      // Create a safe execution function with HTML parsing support
+      // Inject helper functions and variables for HTML manipulation (similar to HTTP_SCRAPE)
+      // Use IIFE to ensure helper functions are available in scope
+      const userCodeWrapper = `
+        return (function(parseHTMLParam, getHTMLDocumentParam, nodeListToArrayParam, createHelpersParam) {
+          // Make helper functions available in this scope with their expected names
+          const parseHTML = parseHTMLParam;
+          const getHTMLDocument = getHTMLDocumentParam;
+          const nodeListToArray = nodeListToArrayParam;
+          
+          // Inject variables directly into scope for easier access
+          const scrapeResponse = variables.scrapeResponse || null;
+          const contactTags = variables.contactTags || [];
+          const triggerMessage = variables.triggerMessage || '';
+          
+          // Create HTML helpers if scrapeResponse.html exists
+          const html = scrapeResponse?.html || null;
+          const helpers = html ? createHelpersParam(html) : {
+            $: () => null,
+            $$: () => [],
+            getText: () => '',
+            getAttr: () => '',
+            mapElements: () => [],
+            getAllText: () => [],
+            getAllAttrs: () => [],
+            doc: null
+          };
+          
+          // Destructure helpers for easy access (always available now)
+          const $ = helpers.$;
+          const $$ = helpers.$$;
+          const getText = helpers.getText;
+          const getAttr = helpers.getAttr;
+          const mapElements = helpers.mapElements;
+          const getAllText = helpers.getAllText;
+          const getAllAttrs = helpers.getAllAttrs;
+          const doc = helpers.doc;
+          
+          // Make all variables available at root level
+          ${Object.keys(variablesToInject).map(key => {
+        // Skip if already defined above
+        if (['scrapeResponse', 'contactTags', 'triggerMessage'].includes(key)) {
+          return '';
+        }
+        return `const ${key} = variables.${key};`;
+      }).filter(Boolean).join('\n')}
+          
+          // User's code - all helper functions are now available in this scope
+          ${config.code}
+        })(parseHTML, getHTMLDocument, nodeListToArray, createHelpers);
+      `;
+
+
+      const executeUserCode = new Function(
+        'variables',
+        'globals',
+        'input',
+        'parseHTML',
+        'getHTMLDocument',
+        'nodeListToArray',
+        'createHelpers',
+        userCodeWrapper,
+      );
+
+      // Execute the code with helper functions and variables available
+      // The functions are passed as parameters and will be available in the code scope
+      const result = executeUserCode(
+        variablesToInject,
+        globals,
+        input,
+        parseHTML,
+        getHTMLDocument,
+        nodeListToArray,
+        createHelpers,
+      );
+
+      // Sanitize result to remove non-serializable objects (DOM nodes, functions, etc.)
+      const sanitizedResult = this.sanitizeForSerialization(result);
+
+      // Save result to context (for backward compatibility)
+      this.contextService.setVariable(context, 'codeOutput', sanitizedResult);
+
+      // Set output - the output should be the result of the JavaScript code
+      // If result is an object, spread it; otherwise, wrap it in codeOutput
+      let outputValue: any;
+      if (sanitizedResult && typeof sanitizedResult === 'object' && !Array.isArray(sanitizedResult) && sanitizedResult.constructor === Object) {
+        // If result is a plain object, use it directly as output
+        outputValue = sanitizedResult;
+      } else {
+        // Otherwise, wrap in codeOutput for backward compatibility
+        outputValue = { codeOutput: sanitizedResult };
+      }
+
+      this.contextService.setOutput(context, outputValue);
 
       // Find next node
       const nextEdge = edges.find((e) => e.source === node.id);
@@ -1036,18 +1440,18 @@ export class NodeExecutorService {
       return {
         nextNodeId,
         shouldWait: false,
-        output: { codeOutput: result },
+        output: outputValue,
       };
     } catch (error) {
       console.error('[CODE] Error executing code:', error);
-      
+
       // Save error to context
       const errorResult = {
         error: true,
         message: error.message,
         name: error.name,
       };
-      
+
       this.contextService.setVariable(context, 'codeOutput', errorResult);
       this.contextService.setOutput(context, { codeOutput: errorResult });
 
@@ -1076,9 +1480,9 @@ export class NodeExecutorService {
     // Check if there's a button or list mapping
     const buttonMapping = this.contextService.getVariable(context, '_buttonMapping');
     const listMapping = this.contextService.getVariable(context, '_listMapping');
-    
+
     let finalValue = message;
-    
+
     // If user replied with a number and we have a mapping, convert it
     if (buttonMapping && buttonMapping[message]) {
       finalValue = buttonMapping[message];
@@ -1088,7 +1492,7 @@ export class NodeExecutorService {
 
     // Save reply to variable
     this.contextService.setVariable(context, config.saveAs, finalValue);
-    
+
     // Also save the raw message
     this.contextService.setVariable(context, `${config.saveAs}_raw`, message);
   }
@@ -1132,7 +1536,7 @@ export class NodeExecutorService {
     // Schedule continuation using setTimeout
     // Note: In production, you'd want to use a job queue (Bull, Agenda, etc.)
     // For now, we'll use a simple setTimeout approach
-    
+
     return {
       nextNodeId: nextEdge?.target || null,
       shouldWait: true,
@@ -1155,7 +1559,6 @@ export class NodeExecutorService {
     contactId?: string,
   ): Promise<NodeExecutionResult> {
     const config = node.config as SetTagsConfig;
-    console.log('[SET_TAGS] Node config:', JSON.stringify(config, null, 2));
 
     if (!sessionId || !contactId) {
       console.error('[SET_TAGS] Missing sessionId or contactId');
@@ -1171,7 +1574,6 @@ export class NodeExecutorService {
     let resultTags: string[] = [];
 
     try {
-      console.log('[SET_TAGS] Action:', config.action, 'Tags:', config.tags);
       switch (config.action) {
         case 'add':
           resultTags = await this.contactTagsService.addTags(
@@ -1180,7 +1582,6 @@ export class NodeExecutorService {
             contactId,
             config.tags || [],
           );
-          console.log(`[SET_TAGS] Added tags to ${contactId}:`, config.tags);
           break;
 
         case 'remove':
@@ -1190,7 +1591,6 @@ export class NodeExecutorService {
             contactId,
             config.tags || [],
           );
-          console.log(`[SET_TAGS] Removed tags from ${contactId}:`, config.tags);
           break;
 
         case 'set':
@@ -1200,13 +1600,11 @@ export class NodeExecutorService {
             contactId,
             config.tags || [],
           );
-          console.log(`[SET_TAGS] Set tags for ${contactId}:`, config.tags);
           break;
 
         case 'clear':
           await this.contactTagsService.clearTags(tenantId, sessionId, contactId);
           resultTags = [];
-          console.log(`[SET_TAGS] Cleared all tags for ${contactId}`);
           break;
 
         default:
@@ -1235,6 +1633,228 @@ export class NodeExecutorService {
         output: { error: error.message, contactTags: resultTags },
       };
     }
+  }
+
+  /**
+   * Execute LOOP node - iterate over arrays or count
+   */
+  private executeLoop(
+    node: WorkflowNode,
+    context: ExecutionContext,
+    edges: any[],
+  ): NodeExecutionResult {
+    const config = node.config as LoopConfig;
+
+    // Validate config
+    if (!config || !config.loopMode) {
+      const errorMsg = `Loop node configuration is missing or invalid. loopMode is required. Config: ${JSON.stringify(config)}`;
+      console.error('[LOOP]', errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    // Default variable names
+    const itemVariableName = config.itemVariableName || 'item';
+    const indexVariableName = config.indexVariableName || 'index';
+
+    let loopData: any[] = [];
+
+    try {
+      if (config.loopMode === 'array') {
+        // Extract array from variable
+        if (!config.arraySource) {
+          throw new Error('Array source is required for array loop mode');
+        }
+
+        // Get the array from context using the arraySource path
+        const arrayValue = this.contextService.getVariable(context, config.arraySource);
+
+        if (!Array.isArray(arrayValue)) {
+          // Try to parse if it's a string
+          if (typeof arrayValue === 'string') {
+            try {
+              const parsed = JSON.parse(arrayValue);
+              if (Array.isArray(parsed)) {
+                loopData = parsed;
+              } else {
+                throw new Error(`Array source "${config.arraySource}" is not an array (parsed to ${typeof parsed})`);
+              }
+            } catch (e) {
+              throw new Error(`Array source "${config.arraySource}" is not a valid array`);
+            }
+          } else {
+            throw new Error(`Array source "${config.arraySource}" is not an array (got ${typeof arrayValue})`);
+          }
+        } else {
+          loopData = arrayValue;
+        }
+      } else if (config.loopMode === 'count') {
+        // Create array of indices for count mode
+        const count = config.count || 0;
+        if (count <= 0) {
+          throw new Error('Count must be greater than 0 for count loop mode');
+        }
+        loopData = Array.from({ length: count }, (_, i) => i);
+      } else {
+        throw new Error(`Invalid loop mode: ${config.loopMode}`);
+      }
+
+      // Store loop metadata in context for the execution engine to use
+      this.contextService.setVariable(context, '_loopData', loopData);
+      this.contextService.setVariable(context, '_loopItemVariable', itemVariableName);
+      this.contextService.setVariable(context, '_loopIndexVariable', indexVariableName);
+      this.contextService.setVariable(context, '_loopNodeId', node.id);
+      this.contextService.setVariable(context, '_loopCurrentIndex', 0);
+      this.contextService.setVariable(context, '_loopResults', []);
+
+      // Set initial item and index
+      if (loopData.length > 0) {
+        this.contextService.setVariable(context, itemVariableName, loopData[0]);
+        this.contextService.setVariable(context, indexVariableName, 0);
+      }
+
+      // Find the 'loop' edge (for iteration) - this connects to nodes executed during each iteration
+      // The 'done' edge will be used by the execution engine after all iterations complete
+      // Note: sourceHandle from React Flow is saved as 'condition' in WorkflowEdge
+      const loopEdge = edges.find((e) => e.source === node.id && e.condition === 'loop');
+      const nextNodeId = loopEdge ? loopEdge.target : null;
+
+
+      // Get current iteration count (if loop was already started)
+      // If _loopIterationsExecuted doesn't exist, this is the first execution, so start at 1
+      const currentIterations = this.contextService.getVariable(context, '_loopIterationsExecuted');
+      const iterationsExecuted = currentIterations !== undefined ? currentIterations + 1 : 1;
+
+      // Store updated iteration count
+      this.contextService.setVariable(context, '_loopIterationsExecuted', iterationsExecuted);
+
+      // Set output with loop info
+      this.contextService.setOutput(context, {
+        loopMode: config.loopMode,
+        totalItems: loopData.length,
+        currentIndex: 0,
+        iterationsExecuted,
+      });
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: {
+          loopMode: config.loopMode,
+          totalItems: loopData.length,
+          currentIndex: 0,
+          iterationsExecuted,
+        },
+      };
+    } catch (error) {
+      console.error('[LOOP] Error:', error);
+
+      // Set error in output
+      this.contextService.setOutput(context, {
+        error: true,
+        message: error.message,
+      });
+
+      // On error, go to 'done' edge (skip the loop)
+      // Note: sourceHandle from React Flow is saved as 'condition' in WorkflowEdge
+      const doneEdge = edges.find((e) => e.source === node.id && e.condition === 'done');
+      const nextNodeId = doneEdge ? doneEdge.target : null;
+
+      return {
+        nextNodeId,
+        shouldWait: false,
+        output: {
+          error: true,
+          message: error.message,
+        },
+      };
+    }
+  }
+
+  /**
+   * Sanitize result to remove non-serializable objects (DOM nodes, functions, etc.)
+   * This ensures the result can be safely stored in the database
+   */
+  private sanitizeForSerialization(value: any, visited = new WeakSet()): any {
+    // Handle null/undefined
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    // Handle primitives
+    if (typeof value !== 'object') {
+      return value;
+    }
+
+    // Prevent circular references
+    if (visited.has(value)) {
+      return '[Circular]';
+    }
+
+    // Handle DOM nodes and window objects
+    if (value.nodeType !== undefined || value.document !== undefined || value.window !== undefined) {
+      // If it's a document, try to extract useful information
+      if (value.documentElement) {
+        return {
+          type: 'Document',
+          title: value.title || null,
+          url: value.URL || value.location?.href || null,
+          html: value.documentElement.outerHTML || null,
+        };
+      }
+      // If it's a DOM element, extract useful properties
+      if (value.tagName) {
+        return {
+          type: 'Element',
+          tagName: value.tagName || null,
+          textContent: value.textContent || null,
+          innerHTML: value.innerHTML || null,
+          outerHTML: value.outerHTML || null,
+          attributes: value.attributes ? Array.from(value.attributes).map((attr: any) => ({
+            name: attr.name,
+            value: attr.value,
+          })) : [],
+        };
+      }
+      // For other DOM objects (like location), extract string properties
+      const sanitized: any = { type: value.constructor?.name || 'DOMObject' };
+      for (const key in value) {
+        if (typeof value[key] === 'string' || typeof value[key] === 'number' || typeof value[key] === 'boolean') {
+          sanitized[key] = value[key];
+        }
+      }
+      return sanitized;
+    }
+
+    // Handle functions
+    if (typeof value === 'function') {
+      return '[Function]';
+    }
+
+    // Handle Date
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    // Handle arrays
+    if (Array.isArray(value)) {
+      visited.add(value);
+      return value.map((item) => this.sanitizeForSerialization(item, visited));
+    }
+
+    // Handle plain objects
+    visited.add(value);
+    const sanitized: any = {};
+    for (const key in value) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        const propValue = value[key];
+        // Skip functions
+        if (typeof propValue === 'function') {
+          continue;
+        }
+        sanitized[key] = this.sanitizeForSerialization(propValue, visited);
+      }
+    }
+    return sanitized;
   }
 }
 

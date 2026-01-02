@@ -27,7 +27,7 @@ export class WorkflowController {
     private whatsappSessionManager: WhatsappSessionManager,
     private executionService: ExecutionService,
     private eventBus: EventBusService,
-  ) {}
+  ) { }
 
   // Health check
   @Get('health')
@@ -86,17 +86,31 @@ export class WorkflowController {
     );
   }
 
+  @Post('workflows/:id/test-node')
+  async testNodeFromContext(
+    @Param('id') workflowId: string,
+    @Body() body: { tenantId: string; nodeId: string; executionId?: string; nodeConfig?: any },
+  ) {
+    return this.workflowService.testNodeFromContext(
+      body.tenantId,
+      workflowId,
+      body.nodeId,
+      body.executionId,
+      body.nodeConfig,
+    );
+  }
+
   // WhatsApp Sessions
 
   @Get('whatsapp/sessions')
   async getSessions(@Query('tenantId') tenantId: string) {
     const sessions = await this.whatsappService.getSessions(tenantId);
-    
+
     // Update real-time status for each session
     const updatedSessions = await Promise.all(
       sessions.map(async (session) => {
         const realTimeStatus = this.whatsappSessionManager.getSessionStatus(session.id);
-        
+
         // If session is not in memory but DB says it's connected, update to disconnected
         if (realTimeStatus === null && session.status === 'CONNECTED') {
           await this.whatsappService.updateSession(session.id, {
@@ -119,14 +133,14 @@ export class WorkflowController {
   @Get('whatsapp/sessions/:id')
   async getSession(@Query('tenantId') tenantId: string, @Param('id') id: string) {
     const session = await this.whatsappService.getSession(tenantId, id);
-    
+
     if (!session) {
       return null;
     }
 
     // Check real-time status from session manager
     const realTimeStatus = this.whatsappSessionManager.getSessionStatus(id);
-    
+
     // If session is not in memory but DB says it's connected, it's actually disconnected
     if (realTimeStatus === null && session.status === 'CONNECTED') {
       await this.whatsappService.updateSession(id, {
@@ -145,27 +159,27 @@ export class WorkflowController {
   @Post('whatsapp/sessions')
   async createSession(@Body() body: { tenantId: string; name: string }) {
     const session = await this.whatsappService.createSession(body.tenantId, body.name);
-    
+
     // Initialize WhatsApp client
     await this.whatsappSessionManager.initializeSession(body.tenantId, session.id);
-    
+
     return session;
   }
 
   @Post('whatsapp/sessions/:id/reconnect')
   async reconnectSession(@Query('tenantId') tenantId: string, @Param('id') id: string) {
     const session = await this.whatsappService.getSession(tenantId, id);
-    
+
     if (!session) {
       return { error: 'Session not found' };
     }
 
     // Disconnect if already connected
     await this.whatsappSessionManager.disconnectSession(id);
-    
+
     // Reinitialize
     await this.whatsappSessionManager.initializeSession(tenantId, id);
-    
+
     return { success: true, message: 'Session reconnection started' };
   }
 
@@ -204,8 +218,6 @@ export class WorkflowController {
     @Param('workflowId') workflowId: string,
   ) {
     const executions = await this.executionService.getWorkflowExecutions(tenantId, workflowId);
-    console.log('📊 [Controller] Returning executions:', executions.length);
-    console.log('📅 [Controller] First execution:', JSON.stringify(executions[0], null, 2));
     return executions;
   }
 

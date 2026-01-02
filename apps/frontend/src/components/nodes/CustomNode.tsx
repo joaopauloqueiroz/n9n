@@ -140,6 +140,14 @@ const nodeConfig: Record<string, any> = {
     borderColor: 'border-[#7d5d39]',
     iconBg: 'bg-gradient-to-br from-amber-500 to-amber-600',
   },
+  'LOOP': {
+    label: 'Loop',
+    subtitle: 'LÓGICA',
+    icon: '🔁',
+    bgColor: 'bg-[#1a2442]',
+    borderColor: 'border-[#3b5d8d]',
+    iconBg: 'bg-gradient-to-br from-blue-500 to-blue-600',
+  },
   'END': {
     label: 'Finalizar',
     subtitle: 'FIM',
@@ -183,7 +191,8 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
   const isEnd = data.type === 'END'
   const isCondition = data.type === 'CONDITION'
   const isSwitch = data.type === 'SWITCH'
-  
+  const isLoop = data.type === 'LOOP'
+
   // Get switch rules for dynamic handles
   const switchRules = isSwitch && data.config.rules ? data.config.rules : []
 
@@ -195,27 +204,27 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
   // Determine border style based on execution state
   const getExecutionBorderClass = () => {
     if (!data.isActive) return ''
-    
+
     if (data.executionStatus === 'completed' && isEnd) {
       return 'ring-2 ring-primary shadow-lg shadow-primary/30'
     }
-    
+
     if (data.executionStatus === 'waiting') {
       return 'ring-2 ring-yellow-500 animate-pulse shadow-lg shadow-yellow-500/30'
     }
-    
+
     if (data.executionStatus === 'failed') {
       return 'ring-2 ring-red-500 shadow-lg shadow-red-500/30'
     }
-    
+
     return 'ring-2 ring-primary animate-pulse shadow-lg shadow-primary/30'
   }
 
   // Get preview text
   const getPreviewText = () => {
     if (data.config.message) {
-      return data.config.message.length > 30 
-        ? data.config.message.substring(0, 30) + '...' 
+      return data.config.message.length > 30
+        ? data.config.message.substring(0, 30) + '...'
         : data.config.message
     }
     if (data.type === 'TRIGGER_MESSAGE') {
@@ -248,10 +257,10 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
         document: '📄 Documento'
       }
       const label = mediaTypeLabel[mediaType]
-      
+
       if (data.config.mediaUrl) {
-        const url = data.config.mediaUrl.length > 25 
-          ? data.config.mediaUrl.substring(0, 25) + '...' 
+        const url = data.config.mediaUrl.length > 25
+          ? data.config.mediaUrl.substring(0, 25) + '...'
           : data.config.mediaUrl
         return `${label}: ${url}`
       }
@@ -302,11 +311,11 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
         clear: '🗑️ Limpar todas'
       }
       const actionLabel = actionLabels[action]
-      
+
       if (action === 'clear') {
         return actionLabel
       }
-      
+
       const count = tags.length
       if (count === 0) {
         return `${actionLabel} (nenhuma tag)`
@@ -316,6 +325,16 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
       }
       return `${actionLabel} ${count} tags`
     }
+    if (data.type === 'LOOP') {
+      const mode = data.config.loopMode || 'array'
+      if (mode === 'count') {
+        const count = data.config.count || 1
+        return `🔁 Executar ${count}x`
+      } else {
+        const source = data.config.arraySource || 'array'
+        return `🔁 Iterar: ${source.length > 20 ? source.substring(0, 20) + '...' : source}`
+      }
+    }
     return null
   }
 
@@ -324,7 +343,7 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
   // Get execution badge
   const getExecutionBadge = () => {
     if (!data.hasExecuted) return null
-    
+
     if (data.executionSuccess) {
       return (
         <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg z-10">
@@ -371,13 +390,13 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
           </button>
         </div>
       )}
-      
+
       {/* Execution Badge */}
       {getExecutionBadge()}
       {/* Input Handle */}
       {!isTrigger && (
-        <Handle 
-          type="target" 
+        <Handle
+          type="target"
           position={Position.Left}
           className="!w-3 !h-3 !bg-gray-400 !border-2 !border-gray-600 hover:!bg-primary hover:!border-primary transition-colors"
         />
@@ -403,12 +422,11 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
                 {config.subtitle}
               </span>
               {data.isActive && (
-                <div className={`w-1.5 h-1.5 rounded-full ${
-                  data.executionStatus === 'waiting' ? 'bg-yellow-500 animate-pulse' :
+                <div className={`w-1.5 h-1.5 rounded-full ${data.executionStatus === 'waiting' ? 'bg-yellow-500 animate-pulse' :
                   data.executionStatus === 'completed' ? 'bg-primary' :
-                  data.executionStatus === 'failed' ? 'bg-red-500' :
-                  'bg-blue-500 animate-pulse'
-                }`} />
+                    data.executionStatus === 'failed' ? 'bg-red-500' :
+                      'bg-blue-500 animate-pulse'
+                  }`} />
               )}
             </div>
             <h3 className="text-sm font-semibold text-white leading-tight">
@@ -445,20 +463,37 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
         )}
       </div>
 
+      {/* Small Test Button for LOOP (top-right corner) */}
+      {data.type === 'LOOP' && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            if (data.onManualTrigger) {
+              data.onManualTrigger(id)
+            }
+          }}
+          className="absolute top-2 right-2 w-6 h-6 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg z-10 group"
+          title="Testar Loop"
+        >
+          <Play size={12} className="text-white" fill="white" />
+        </button>
+      )}
+
+
       {/* Output Handles */}
       {!isEnd && (
         <>
           {isCondition ? (
             <>
-              <Handle 
-                type="source" 
+              <Handle
+                type="source"
                 position={Position.Right}
                 id="true"
                 style={{ top: '35%' }}
                 className="!w-3 !h-3 !bg-green-400 !border-2 !border-green-600 hover:!bg-green-300 transition-colors"
               />
-              <Handle 
-                type="source" 
+              <Handle
+                type="source"
                 position={Position.Right}
                 id="false"
                 style={{ top: '65%' }}
@@ -483,7 +518,7 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
                   '!bg-cyan-400 !border-cyan-600 hover:!bg-cyan-300',
                 ]
                 const colorClass = colors[index % colors.length]
-                
+
                 return (
                   <Handle
                     key={rule.id || index}
@@ -513,9 +548,33 @@ function CustomNode({ data, id }: CustomNodeProps & { id: string }) {
                 <span className="text-yellow-400">Def</span>
               </div>
             </>
+          ) : isLoop ? (
+            <>
+              {/* Loop iteration handle (top) */}
+              <Handle
+                type="source"
+                position={Position.Right}
+                id="loop"
+                style={{ top: '35%' }}
+                className="!w-3 !h-3 !bg-blue-400 !border-2 !border-blue-600 hover:!bg-blue-300 transition-colors"
+              />
+              {/* Loop done handle (bottom) */}
+              <Handle
+                type="source"
+                position={Position.Right}
+                id="done"
+                style={{ top: '65%' }}
+                className="!w-3 !h-3 !bg-green-400 !border-2 !border-green-600 hover:!bg-green-300 transition-colors"
+              />
+              {/* Labels for loop outputs */}
+              <div className="absolute -bottom-5 left-0 right-0 flex justify-around text-[9px] font-bold">
+                <span className="text-blue-400">Loop</span>
+                <span className="text-green-400">Done</span>
+              </div>
+            </>
           ) : (
-            <Handle 
-              type="source" 
+            <Handle
+              type="source"
               position={Position.Right}
               className="!w-3 !h-3 !bg-gray-400 !border-2 !border-gray-600 hover:!bg-primary hover:!border-primary transition-colors"
             />

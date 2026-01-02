@@ -90,12 +90,20 @@ export const apiClient = {
   },
 
   // Manual Trigger
-  triggerManualExecution: async (tenantId: string, workflowId: string, nodeId: string) => {
+  async triggerManualExecution(tenantId: string, workflowId: string, nodeId: string) {
     const { data } = await client.post(`/api/workflows/${workflowId}/trigger-manual`, {
       tenantId,
       nodeId,
     })
     return data
   },
-}
 
+  async testNode(tenantId: string, workflowId: string, nodeId: string, executionId?: string) {
+    const { data } = await client.post(`/api/workflows/${workflowId}/test-node`, {
+      tenantId,
+      nodeId,
+      executionId,
+    })
+    return data
+  },
+}

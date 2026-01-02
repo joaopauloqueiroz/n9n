@@ -30,9 +30,6 @@ export class ContextService {
         ...(context.variables || {}),
       };
 
-      console.log('[evaluateExpression] Expression:', expression);
-      console.log('[evaluateExpression] Variables:', JSON.stringify(safeContext.variables, null, 2));
-
       // Use Function constructor for safe evaluation
       // Pass context as 'this' and individual properties as parameters
       const generatedCode = `
@@ -40,8 +37,6 @@ export class ContextService {
         ${Object.keys(safeContext.variables).map(key => `const ${key} = variables.${key};`).join('\n')}
         return ${expression};
       `;
-      
-      console.log('[evaluateExpression] Generated code:', generatedCode);
 
       const func = new Function(
         'variables',
@@ -57,8 +52,6 @@ export class ContextService {
         safeContext.input,
         safeContext.output,
       );
-
-      console.log('[evaluateExpression] Result:', result);
       return result;
     } catch (error) {
       console.error('Expression evaluation error:', error);
@@ -75,8 +68,14 @@ export class ContextService {
 
   /**
    * Get variable from context
+   * Supports both simple keys (e.g., "userName") and nested paths (e.g., "codeOutput.products")
    */
   getVariable(context: ExecutionContext, key: string): any {
+    // If key contains dots, use path resolution
+    if (key.includes('.')) {
+      return this.getValueByPath(context, key);
+    }
+    // Otherwise, use simple variable lookup
     return context.variables[key];
   }
 

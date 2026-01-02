@@ -86,6 +86,15 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         description: 'Faz uma requisição HTTP para uma API externa'
       },
       {
+        type: 'COMMAND' as WorkflowNodeType,
+        label: 'Executar Comando',
+        icon: '⚡',
+        color: 'from-orange-500 to-orange-600',
+        bgColor: 'bg-[#2a1a0e]',
+        borderColor: 'border-[#7d5b3b]',
+        description: 'Executa um comando do sistema (ex: curl, git, etc)'
+      },
+      {
         type: 'HTTP_SCRAPE' as WorkflowNodeType,
         label: 'Web Scraping',
         icon: '🕷️',
@@ -147,6 +156,15 @@ export default function NodesSidebar({ onAddNode, onClose }: NodesSidebarProps) 
         bgColor: 'bg-[#2e2419]',
         borderColor: 'border-[#7d5d39]',
         description: 'Pausa a execução por um tempo determinado'
+      },
+      {
+        type: 'LOOP' as WorkflowNodeType,
+        label: 'Loop',
+        icon: '🔁',
+        color: 'from-blue-500 to-blue-600',
+        bgColor: 'bg-[#1a2442]',
+        borderColor: 'border-[#3b5d8d]',
+        description: 'Itera sobre arrays ou executa N vezes'
       },
       {
         type: 'CONDITION' as WorkflowNodeType,

@@ -11,6 +11,9 @@ interface NodeConfigModalProps {
   onClose: () => void
   onSave: (nodeId: string, config: any) => void
   embedded?: boolean
+  inputData?: any // Optional: real execution input data
+  executionData?: any // Optional: full execution data
+  executionLogs?: any[] // Optional: execution logs
 }
 
 // Component for SET_TAGS configuration
@@ -26,7 +29,6 @@ function SetTagsConfig({ config, setConfig, tenantId }: any) {
   // Ensure action is always set
   useEffect(() => {
     if (!config.action) {
-      console.log('[SetTagsConfig] Setting default action to "add"')
       setConfig({ ...config, action: 'add' })
     }
   }, [config.action])
@@ -188,55 +190,30 @@ function CodeEditor({ value, onChange, language = 'javascript' }: any) {
   }
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
-    // Adicionar snippets customizados
-    monaco.languages.registerCompletionItemProvider(language, {
-      provideCompletionItems: () => {
-        const suggestions = [
-          {
-            label: 'map',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'map((item) => {\n\t${1:return item}\n})',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Array map function',
-          },
-          {
-            label: 'filter',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'filter((item) => ${1:item.condition})',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Array filter function',
-          },
-          {
-            label: 'reduce',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'reduce((acc, item) => {\n\t${1:return acc}\n}, ${2:initialValue})',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Array reduce function',
-          },
-          {
-            label: 'forEach',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'forEach((item) => {\n\t${1:// code}\n})',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Array forEach function',
-          },
-          {
-            label: 'find',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: 'find((item) => ${1:item.condition})',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Array find function',
-          },
-          {
-            label: 'variables.',
-            kind: monaco.languages.CompletionItemKind.Variable,
-            insertText: 'variables.${1:variableName}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Access context variables',
-          },
-        ]
-        return { suggestions }
-      },
+    // Disable ALL suggestion features completely
+    editor.updateOptions({
+      quickSuggestions: false,
+      suggestOnTriggerCharacters: false,
+      acceptSuggestionOnCommitCharacter: false,
+      wordBasedSuggestions: 'off',
+    })
+
+    // Override space key handler to always insert space
+    editor.onKeyDown((e: any) => {
+      if (e.keyCode === monaco.KeyCode.Space && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Insert space normally - suggestions are already disabled, so no need to close them
+        e.preventDefault()
+        e.stopPropagation()
+        const position = editor.getPosition()
+        const model = editor.getModel()
+        if (model && position) {
+          model.applyEdits([{
+            range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+            text: ' ',
+          }])
+          editor.setPosition({ lineNumber: position.lineNumber, column: position.column + 1 })
+        }
+      }
     })
   }
 
@@ -257,22 +234,45 @@ function CodeEditor({ value, onChange, language = 'javascript' }: any) {
         automaticLayout: true,
         tabSize: 2,
         wordWrap: 'on',
+        // Fix space key issue - completely disable ALL auto-suggestions
         suggest: {
-          snippetsPreventQuickSuggestions: false,
+          snippetsPreventQuickSuggestions: true,
+          showSnippets: false,
+          showKeywords: false,
+          showWords: false,
+          showClasses: false,
+          showFunctions: false,
+          showVariables: false,
+          showFields: false,
+          showMethods: false,
+          showProperties: false,
+          showEvents: false,
+          showOperators: false,
+          showUnits: false,
+          showValues: false,
+          showColors: false,
+          showFiles: false,
+          showReferences: false,
+          showFolders: false,
+          showTypeParameters: false,
+          showIssues: false,
+          showUsers: false,
+          showModules: false,
         },
-        quickSuggestions: {
-          other: true,
-          comments: false,
-          strings: true,
-        },
-        // Fix space key issue - prevent space from accepting suggestions
+        quickSuggestions: false,
+        suggestOnTriggerCharacters: false,
+        // Prevent space from accepting suggestions
         acceptSuggestionOnCommitCharacter: false,
         acceptSuggestionOnEnter: 'on',
+        // Disable tab completion that might interfere
+        tabCompletion: 'off',
+        // Disable parameter hints that might interfere
+        parameterHints: {
+          enabled: false,
+        },
         accessibilitySupport: 'auto',
         // Allow normal typing including spaces
         disableLayerHinting: true,
-        // Disable quick suggestions on space
-        quickSuggestionsDelay: 500,
       }}
     />
   )
@@ -288,10 +288,7 @@ function DroppableInput({ value, onChange, placeholder, className, type = 'text'
     e.stopPropagation()
     setIsDragOver(false)
     const droppedText = e.dataTransfer.getData('text/plain')
-    
-    console.log('[DroppableInput] Dropped text:', droppedText)
-    console.log('[DroppableInput] Current value:', value)
-    
+
     // Inserir no cursor ou no final
     if (inputRef.current) {
       const input = inputRef.current
@@ -299,11 +296,9 @@ function DroppableInput({ value, onChange, placeholder, className, type = 'text'
       const end = input.selectionEnd || 0
       const currentValue = value || ''
       const newValue = currentValue.substring(0, start) + droppedText + currentValue.substring(end)
-      
-      console.log('[DroppableInput] New value:', newValue)
-      
+
       onChange({ target: { value: newValue } })
-      
+
       // Reposicionar cursor
       setTimeout(() => {
         input.focus()
@@ -345,6 +340,9 @@ export default function NodeConfigModal({
   onClose,
   onSave,
   embedded = false,
+  inputData,
+  executionData,
+  executionLogs,
 }: NodeConfigModalProps) {
   const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
   const [activeTab, setActiveTab] = useState<'parameters' | 'settings'>('parameters')
@@ -355,23 +353,37 @@ export default function NodeConfigModal({
   const [loadingLabels, setLoadingLabels] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [codeTestResult, setCodeTestResult] = useState<any>(null)
+  const [testingCode, setTestingCode] = useState(false)
+  const [scrapeTestResult, setScrapeTestResult] = useState<any>(null)
+  const [testingScrape, setTestingScrape] = useState(false)
+  const [testHTML, setTestHTML] = useState<string>('') // HTML real para teste
+  const [loopTestResult, setLoopTestResult] = useState<any>(null)
+  const [testingLoop, setTestingLoop] = useState(false)
+  const [commandTestResult, setCommandTestResult] = useState<any>(null)
+  const [testingCommand, setTestingCommand] = useState(false)
 
   useEffect(() => {
     if (node) {
       setConfig(node.config || {})
-      
-      // Load sessions if it's a trigger node or manage labels node
-      if (node.type === WorkflowNodeType.TRIGGER_MESSAGE || node.type === WorkflowNodeType.TRIGGER_SCHEDULE || node.type === 'TRIGGER_MANUAL' || node.type === 'MANAGE_LABELS') {
+
+      // Load sessions if it's a trigger node, manage labels node, or send message/media node
+      if (node.type === WorkflowNodeType.TRIGGER_MESSAGE || 
+          node.type === WorkflowNodeType.TRIGGER_SCHEDULE || 
+          node.type === 'TRIGGER_MANUAL' || 
+          node.type === 'MANAGE_LABELS' ||
+          node.type === WorkflowNodeType.SEND_MESSAGE ||
+          node.type === WorkflowNodeType.SEND_MEDIA ||
+          node.type === WorkflowNodeType.SEND_BUTTONS ||
+          node.type === WorkflowNodeType.SEND_LIST) {
         loadSessions()
       }
     }
   }, [node])
 
   useEffect(() => {
-    console.log('[LABELS EFFECT] node?.type:', node?.type, 'config.action:', config.action, 'sessions.length:', sessions.length)
     // Load labels when it's a MANAGE_LABELS node and action is not 'list'
     if (node?.type === 'MANAGE_LABELS' && config.action !== 'list' && sessions.length > 0) {
-      console.log('[LABELS EFFECT] Calling loadLabels()')
       loadLabels()
     }
   }, [node?.type, config.action, sessions])
@@ -389,30 +401,21 @@ export default function NodeConfigModal({
   }
 
   const loadLabels = async () => {
-    console.log('[LABELS] loadLabels called, sessions:', sessions)
     if (!sessions || sessions.length === 0) {
-      console.log('[LABELS] No sessions available')
       return
     }
-    
+
     setLoadingLabels(true)
     try {
       // Use the first connected session to get labels
       const connectedSession = sessions.find((s: any) => s.status === 'CONNECTED')
-      console.log('[LABELS] Connected session:', connectedSession)
       if (connectedSession) {
-        console.log('[LABELS] Loading labels for session:', connectedSession.id)
         const labels = await apiClient.getSessionLabels(connectedSession.id)
-        console.log('[LABELS] Received labels:', labels)
-        console.log('[LABELS] Setting availableLabels to:', labels)
         setAvailableLabels(labels || [])
-      } else {
-        console.log('[LABELS] No connected session found')
       }
     } catch (error) {
-      console.error('[LABELS] Error loading labels:', error)
+      console.error('Error loading labels:', error)
     } finally {
-      console.log('[LABELS] Setting loadingLabels to false')
       setLoadingLabels(false)
     }
   }
@@ -423,7 +426,7 @@ export default function NodeConfigModal({
       try {
         await onSave(node.id, config)
         setSaveSuccess(true)
-        
+
         // Mostrar feedback de sucesso por 2 segundos
         setTimeout(() => {
           setSaveSuccess(false)
@@ -469,7 +472,7 @@ export default function NodeConfigModal({
 
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-200 mb-3">Filtro de Mensagens</h3>
-              
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-200">
@@ -483,8 +486,8 @@ export default function NodeConfigModal({
                     className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono"
                   />
                   <p className="text-xs text-gray-400 mt-1.5">
-                    {config.pattern && config.pattern.trim() !== '' 
-                      ? 'A mensagem que dispara este workflow' 
+                    {config.pattern && config.pattern.trim() !== ''
+                      ? 'A mensagem que dispara este workflow'
                       : '⚠️ Sem filtro: Este trigger aceitará TODAS as mensagens recebidas'}
                   </p>
                 </div>
@@ -511,8 +514,8 @@ export default function NodeConfigModal({
             {/* Help Text */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> Se você deixar o padrão vazio, este workflow será acionado para <strong>todas as mensagens</strong> recebidas. 
-                Isso é útil para criar um chatbot que responde a qualquer mensagem. 
+                💡 <strong>Dica:</strong> Se você deixar o padrão vazio, este workflow será acionado para <strong>todas as mensagens</strong> recebidas.
+                Isso é útil para criar um chatbot que responde a qualquer mensagem.
                 Se você definir um padrão, apenas mensagens que correspondam serão processadas.
               </p>
             </div>
@@ -638,7 +641,7 @@ export default function NodeConfigModal({
                 <p className="text-xs text-gray-500 mt-1.5">
                   Formato: minuto hora dia mês dia-da-semana
                 </p>
-                
+
                 {/* Cron Examples */}
                 <div className="mt-4 bg-[#1a1a1a] border border-gray-700 rounded-lg p-4">
                   <h4 className="text-sm font-semibold text-gray-200 mb-3">Exemplos:</h4>
@@ -689,7 +692,7 @@ export default function NodeConfigModal({
             <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3">
               <p className="text-xs text-purple-300 leading-relaxed">
                 ⏰ <strong>Agendamento:</strong> Este workflow será executado automaticamente de acordo com o agendamento configurado.
-                {config.scheduleType === 'cron' 
+                {config.scheduleType === 'cron'
                   ? ' Use expressões cron para controle preciso de horários.'
                   : ' O workflow será executado em intervalos regulares.'}
               </p>
@@ -700,6 +703,43 @@ export default function NodeConfigModal({
       case 'SEND_MESSAGE':
         return (
           <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                WhatsApp Session (Opcional)
+              </label>
+              <select
+                value={config.sessionId || ''}
+                onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                disabled={loading}
+              >
+                <option value="">Usar sessão do contexto (padrão)</option>
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.name} ({session.phoneNumber})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Selecione uma sessão específica para enviar a mensagem, ou deixe vazio para usar a sessão atual.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Para (Número - Opcional)
+              </label>
+              <input
+                type="text"
+                value={config.to || ''}
+                onChange={(e) => setConfig({ ...config, to: e.target.value })}
+                placeholder="{{contact.phoneNumber}} ou 5511999999999"
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Número de destino. Suporta variáveis. Se vazio, responde ao contato atual.
+              </p>
+            </div>
             <div>
               <label className="block text-sm font-medium mb-2 text-gray-200">
                 Message
@@ -717,7 +757,7 @@ export default function NodeConfigModal({
                 </span>
               </div>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium mb-2 text-gray-200">
                 Delay (ms)
@@ -740,6 +780,44 @@ export default function NodeConfigModal({
       case 'SEND_MEDIA':
         return (
           <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                WhatsApp Session (Opcional)
+              </label>
+              <select
+                value={config.sessionId || ''}
+                onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                disabled={loading}
+              >
+                <option value="">Usar sessão do contexto (padrão)</option>
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.name} ({session.phoneNumber})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Selecione uma sessão específica para enviar a mídia, ou deixe vazio para usar a sessão atual.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Para (Número - Opcional)
+              </label>
+              <input
+                type="text"
+                value={config.to || ''}
+                onChange={(e) => setConfig({ ...config, to: e.target.value })}
+                placeholder="{{contact.phoneNumber}} ou 5511999999999"
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Número de destino. Suporta variáveis. Se vazio, responde ao contato atual.
+              </p>
+            </div>
+
             <div>
               <label className="block text-sm font-medium mb-2 text-gray-200">
                 Tipo de Mídia
@@ -852,7 +930,7 @@ export default function NodeConfigModal({
 
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> A mídia será baixada da URL fornecida e enviada via WhatsApp. 
+                💡 <strong>Dica:</strong> A mídia será baixada da URL fornecida e enviada via WhatsApp.
                 Certifique-se de que a URL seja acessível publicamente.
               </p>
             </div>
@@ -861,17 +939,17 @@ export default function NodeConfigModal({
 
       case 'SEND_BUTTONS':
         const buttons = config.buttons || []
-        
+
         const addButton = () => {
           setConfig({ ...config, buttons: [...buttons, { id: `btn-${Date.now()}`, text: '' }] })
         }
-        
+
         const updateButton = (index: number, field: string, value: string) => {
           const updated = [...buttons]
           updated[index] = { ...updated[index], [field]: value }
           setConfig({ ...config, buttons: updated })
         }
-        
+
         const removeButton = (index: number) => {
           const updated = buttons.filter((_: any, i: number) => i !== index)
           setConfig({ ...config, buttons: updated })
@@ -903,11 +981,11 @@ export default function NodeConfigModal({
                   + Adicionar Botão
                 </button>
               </div>
-              
+
               {buttons.length >= 3 && (
                 <p className="text-xs text-yellow-400 mb-3">⚠️ Máximo de 3 botões permitido pelo WhatsApp</p>
               )}
-              
+
               <div className="space-y-2">
                 {buttons.map((button: any, index: number) => (
                   <div key={index} className="flex gap-2">
@@ -948,7 +1026,7 @@ export default function NodeConfigModal({
 
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> Os botões aparecem abaixo da mensagem. Quando o usuário clicar em um botão, 
+                💡 <strong>Dica:</strong> Os botões aparecem abaixo da mensagem. Quando o usuário clicar em um botão,
                 a resposta será o ID do botão (btn-xxx). Use um node WAIT_REPLY após este para capturar a resposta.
               </p>
             </div>
@@ -957,34 +1035,34 @@ export default function NodeConfigModal({
 
       case 'SEND_LIST':
         const listSections = config.sections || []
-        
+
         const addSection = () => {
           setConfig({ ...config, sections: [...listSections, { title: '', rows: [] }] })
         }
-        
+
         const updateSection = (index: number, field: string, value: string) => {
           const updated = [...listSections]
           updated[index] = { ...updated[index], [field]: value }
           setConfig({ ...config, sections: updated })
         }
-        
+
         const removeSection = (index: number) => {
           const updated = listSections.filter((_: any, i: number) => i !== index)
           setConfig({ ...config, sections: updated })
         }
-        
+
         const addRow = (sectionIndex: number) => {
           const updated = [...listSections]
           updated[sectionIndex].rows.push({ id: `row-${Date.now()}`, title: '', description: '' })
           setConfig({ ...config, sections: updated })
         }
-        
+
         const updateRow = (sectionIndex: number, rowIndex: number, field: string, value: string) => {
           const updated = [...listSections]
           updated[sectionIndex].rows[rowIndex] = { ...updated[sectionIndex].rows[rowIndex], [field]: value }
           setConfig({ ...config, sections: updated })
         }
-        
+
         const removeRow = (sectionIndex: number, rowIndex: number) => {
           const updated = [...listSections]
           updated[sectionIndex].rows = updated[sectionIndex].rows.filter((_: any, i: number) => i !== rowIndex)
@@ -1032,7 +1110,7 @@ export default function NodeConfigModal({
                   + Adicionar Seção
                 </button>
               </div>
-              
+
               <div className="space-y-4">
                 {listSections.map((section: any, sectionIndex: number) => (
                   <div key={sectionIndex} className="bg-[#0a0a0a] border border-gray-700 rounded-lg p-3">
@@ -1051,7 +1129,7 @@ export default function NodeConfigModal({
                         ✕
                       </button>
                     </div>
-                    
+
                     <div className="space-y-2 mb-2">
                       {section.rows.map((row: any, rowIndex: number) => (
                         <div key={rowIndex} className="flex gap-2">
@@ -1082,7 +1160,7 @@ export default function NodeConfigModal({
                         </div>
                       ))}
                     </div>
-                    
+
                     <button
                       onClick={() => addRow(sectionIndex)}
                       className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded text-xs text-gray-400 hover:text-gray-300 hover:border-gray-600 transition"
@@ -1113,7 +1191,7 @@ export default function NodeConfigModal({
 
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> As listas são ótimas para menus com muitas opções. Quando o usuário selecionar uma opção, 
+                💡 <strong>Dica:</strong> As listas são ótimas para menus com muitas opções. Quando o usuário selecionar uma opção,
                 a resposta será o ID da linha (row-xxx). Use um node WAIT_REPLY após este para capturar a resposta.
               </p>
             </div>
@@ -1122,7 +1200,7 @@ export default function NodeConfigModal({
 
       case 'MANAGE_LABELS':
         const selectedLabelIds = config.labelIds || []
-        
+
         const toggleLabel = (labelId: string) => {
           const updated = selectedLabelIds.includes(labelId)
             ? selectedLabelIds.filter((id: string) => id !== labelId)
@@ -1155,7 +1233,6 @@ export default function NodeConfigModal({
                   </h3>
                   <button
                     onClick={() => {
-                      console.log('[LABELS] Reload button clicked!')
                       loadLabels()
                     }}
                     disabled={loadingLabels}
@@ -1164,18 +1241,18 @@ export default function NodeConfigModal({
                     {loadingLabels ? 'Carregando...' : '🔄 Recarregar'}
                   </button>
                 </div>
-                
+
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {loadingLabels && (
                     <p className="text-xs text-gray-500 text-center py-4">Carregando etiquetas...</p>
                   )}
-                  
+
                   {!loadingLabels && availableLabels.length === 0 && (
                     <p className="text-xs text-gray-500 text-center py-4">
                       Nenhuma etiqueta encontrada. Certifique-se de que há uma sessão conectada.
                     </p>
                   )}
-                  
+
                   {!loadingLabels && availableLabels.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {availableLabels.map((label: any) => {
@@ -1192,7 +1269,7 @@ export default function NodeConfigModal({
                         ]
                         const colorIndex = parseInt(label.id) % colors.length
                         const color = colors[colorIndex]
-                        
+
                         return (
                           <button
                             key={label.id}
@@ -1200,8 +1277,8 @@ export default function NodeConfigModal({
                             className={`
                               px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all
                               ${color.bg} ${color.text}
-                              ${isSelected 
-                                ? `border-2 ${color.border} shadow-lg scale-105` 
+                              ${isSelected
+                                ? `border-2 ${color.border} shadow-lg scale-105`
                                 : 'border-2 border-transparent hover:scale-105'
                               }
                             `}
@@ -1216,7 +1293,7 @@ export default function NodeConfigModal({
                     </div>
                   )}
                 </div>
-                
+
                 {selectedLabelIds.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-gray-700">
                     <div className="flex items-center gap-2">
@@ -1252,7 +1329,7 @@ export default function NodeConfigModal({
 
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> As etiquetas do WhatsApp são as tags coloridas que aparecem nas conversas. 
+                💡 <strong>Dica:</strong> As etiquetas do WhatsApp são as tags coloridas que aparecem nas conversas.
                 Use este node para organizar automaticamente seus contatos por categorias (cliente, lead, suporte, etc).
                 {config.action === 'list' && ' As etiquetas serão salvas em formato de array com id, name e color.'}
               </p>
@@ -1349,11 +1426,331 @@ export default function NodeConfigModal({
           </div>
         )
 
+      case 'LOOP':
+        return (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Modo de Loop
+              </label>
+              <select
+                value={config.loopMode || 'array'}
+                onChange={(e) => setConfig({ ...config, loopMode: e.target.value })}
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              >
+                <option value="array">Iterar sobre Array</option>
+                <option value="count">Iterar N vezes</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                {config.loopMode === 'count'
+                  ? 'Executa o loop um número fixo de vezes'
+                  : 'Itera sobre cada item de um array'
+                }
+              </p>
+            </div>
+
+            {config.loopMode === 'array' && (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Fonte do Array
+                </label>
+                <input
+                  type="text"
+                  value={config.arraySource || ''}
+                  onChange={(e) => setConfig({ ...config, arraySource: e.target.value })}
+                  placeholder="scrapeResponse.scriptResult"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Caminho da variável que contém o array (ex: scrapeResponse.scriptResult, codeOutput.items)
+                </p>
+              </div>
+            )}
+
+            {config.loopMode === 'count' && (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Número de Iterações
+                </label>
+                <input
+                  type="number"
+                  value={config.count || 1}
+                  onChange={(e) => setConfig({ ...config, count: parseInt(e.target.value) || 1 })}
+                  placeholder="10"
+                  min="1"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Quantas vezes executar o loop
+                </p>
+              </div>
+            )}
+
+            <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">Variáveis do Loop</h3>
+
+              {config.loopMode === 'array' && (
+                <div className="mb-3">
+                  <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                    Nome da variável do item
+                  </label>
+                  <input
+                    type="text"
+                    value={config.itemVariableName || 'item'}
+                    onChange={(e) => setConfig({ ...config, itemVariableName: e.target.value })}
+                    placeholder="item"
+                    className="w-full px-3 py-2 bg-[#0a0a0a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Acesse o item atual usando <code className="bg-gray-700 px-1 py-0.5 rounded">{'{{item}}'}</code>
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                  Nome da variável do índice
+                </label>
+                <input
+                  type="text"
+                  value={config.indexVariableName || 'index'}
+                  onChange={(e) => setConfig({ ...config, indexVariableName: e.target.value })}
+                  placeholder="index"
+                  className="w-full px-3 py-2 bg-[#0a0a0a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Acesse o índice usando <code className="bg-gray-700 px-1 py-0.5 rounded">{'{{index}}'}</code> (começa em 0)
+                </p>
+              </div>
+            </div>
+
+            {/* Test Button */}
+            <div className="flex items-center justify-between mb-4">
+              <label className="block text-sm font-medium text-gray-200">
+                Testar Loop
+              </label>
+              <button
+                onClick={async () => {
+                  if (!executionData?.id) {
+                    setLoopTestResult({ error: 'Nenhuma execução encontrada. Execute o workflow primeiro para testar o loop.' })
+                    return
+                  }
+
+                  // Validate config before testing
+                  if (!config.loopMode) {
+                    setLoopTestResult({ error: 'Por favor, configure o modo de loop antes de testar.' })
+                    return
+                  }
+
+                  if (config.loopMode === 'array' && !config.arraySource) {
+                    setLoopTestResult({ error: 'Por favor, configure a fonte do array antes de testar.' })
+                    return
+                  }
+
+                  if (config.loopMode === 'count' && (!config.count || config.count < 1)) {
+                    setLoopTestResult({ error: 'Por favor, configure o número de iterações antes de testar.' })
+                    return
+                  }
+
+                  // Save config first to ensure it's persisted
+                  try {
+                    if (onSave) {
+                      await onSave(node.id, config)
+                      // Wait longer to ensure workflow is saved and database is updated
+                      await new Promise(resolve => setTimeout(resolve, 800))
+                    }
+                  } catch (saveError: any) {
+                    setLoopTestResult({ error: `Erro ao salvar configuração: ${saveError.message || 'Unknown error'}` })
+                    return
+                  }
+
+                  setTestingLoop(true)
+                  setLoopTestResult(null)
+
+                  try {
+                    const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
+                    const response = await fetch(`${API_URL}/api/workflows/${executionData.workflowId}/test-node?tenantId=${tenantId}&nodeId=${node.id}&executionId=${executionData.id}`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        tenantId,
+                        nodeId: node.id,
+                        executionId: executionData.id,
+                        nodeConfig: config, // Pass current config to ensure it's used
+                      }),
+                    })
+
+                    if (!response.ok) {
+                      let errorMessage = 'Failed to test loop'
+                      try {
+                        const errorData = await response.json()
+                        errorMessage = errorData.message || errorData.error || errorMessage
+                      } catch {
+                        const text = await response.text().catch(() => '')
+                        errorMessage = text || errorMessage
+                      }
+                      throw new Error(errorMessage)
+                    }
+
+                    const result = await response.json()
+
+                    // Wait a bit for execution to complete and then fetch logs
+                    setTimeout(async () => {
+                      try {
+                        const logsResponse = await fetch(`${API_URL}/api/executions/${result.executionId}/logs?tenantId=${tenantId}`)
+                        if (logsResponse.ok) {
+                          const logs = await logsResponse.json()
+
+                          // Find loop node execution logs
+                          const loopLogs = logs.filter((log: any) => {
+                            const logType = log.eventType || log.type
+                            return logType === 'node.executed' && log.nodeId === node.id
+                          })
+
+                          // Get iterations from output (most accurate)
+                          let iterationsExecuted = 0
+                          let output: any = {}
+
+                          if (loopLogs.length > 0) {
+                            const lastLog = loopLogs[loopLogs.length - 1]
+                            output = lastLog.data?.output || {}
+
+                            // Check if there's an error in the output
+                            if (output.error) {
+                              setLoopTestResult({
+                                error: output.message || 'Erro ao executar loop',
+                                output,
+                              })
+                              setTestingLoop(false)
+                              return
+                            }
+
+                            // Try to get iterations from output (preferred method)
+                            if (output.iterationsExecuted !== undefined) {
+                              iterationsExecuted = output.iterationsExecuted
+                            } else if (output.totalItems !== undefined && config.loopMode === 'count') {
+                              // For count mode, totalItems represents the iterations
+                              iterationsExecuted = output.totalItems
+                            } else if (loopLogs.length > 0) {
+                              // Fallback: count by number of logs (each log = one execution)
+                              iterationsExecuted = loopLogs.length
+                            }
+                          }
+
+                          setLoopTestResult({
+                            success: true,
+                            iterationsExecuted,
+                            totalItems: output.totalItems || (config.loopMode === 'count' ? (config.count || 1) : undefined),
+                            output,
+                          })
+                        } else {
+                          throw new Error('Failed to fetch execution logs')
+                        }
+                      } catch (error: any) {
+                        setLoopTestResult({
+                          success: true,
+                          iterationsExecuted: 0,
+                          message: 'Loop executado, mas não foi possível obter o número de iterações: ' + (error.message || 'Unknown error'),
+                        })
+                      } finally {
+                        setTestingLoop(false)
+                      }
+                    }, 2000)
+                  } catch (error: any) {
+                    setLoopTestResult({
+                      error: error.message || 'Erro ao testar loop',
+                    })
+                    setTestingLoop(false)
+                  }
+                }}
+                disabled={testingLoop || !executionData?.id}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition"
+              >
+                {testingLoop ? 'Testando...' : '▶ Testar com contexto atual'}
+              </button>
+            </div>
+
+            {/* Test Result */}
+            {loopTestResult && (
+              <div className={`mt-4 border rounded-lg p-4 ${loopTestResult.error || !loopTestResult.success
+                ? 'bg-red-500/10 border-red-500/30'
+                : 'bg-green-500/10 border-green-500/30'
+                }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className={`text-sm font-semibold ${loopTestResult.error || !loopTestResult.success ? 'text-red-300' : 'text-green-300'
+                    }`}>
+                    {loopTestResult.error || !loopTestResult.success ? '❌ Erro' : '✅ Sucesso'}
+                  </h4>
+                  <button
+                    onClick={() => setLoopTestResult(null)}
+                    className="text-gray-400 hover:text-white text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {loopTestResult.error ? (
+                  <div className="text-xs text-red-300 font-mono bg-black/30 p-2 rounded">
+                    {loopTestResult.error}
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs text-gray-400 mb-2">
+                      {loopTestResult.iterationsExecuted !== undefined ? (
+                        <span className="text-green-300 font-semibold">
+                          🔁 Loop executado {loopTestResult.iterationsExecuted} {loopTestResult.iterationsExecuted === 1 ? 'vez' : 'vezes'}
+                        </span>
+                      ) : (
+                        <span className="text-green-300">Loop executado com sucesso</span>
+                      )}
+                    </div>
+                    {loopTestResult.totalItems !== undefined && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        Total de itens: {loopTestResult.totalItems}
+                      </div>
+                    )}
+                    {loopTestResult.output && Object.keys(loopTestResult.output).length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs text-gray-400 mb-1">Output:</div>
+                        <pre className="text-xs text-green-300 font-mono bg-black/30 p-2 rounded overflow-x-auto max-h-32 overflow-y-auto">
+                          {JSON.stringify(loopTestResult.output, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">🔁</span>
+                <div className="flex-1">
+                  <p className="text-sm text-blue-300 font-medium mb-1">
+                    Como funciona o Loop
+                  </p>
+                  <p className="text-xs text-blue-200/80 leading-relaxed">
+                    {config.loopMode === 'count'
+                      ? `O loop executará os nós subsequentes ${config.count || 1} vezes. Use a variável {{${config.indexVariableName || 'index'}}} para acessar o número da iteração atual (0 a ${(config.count || 1) - 1}).`
+                      : `O loop iterará sobre cada item do array em ${config.arraySource || 'arraySource'}. Use {{${config.itemVariableName || 'item'}}} para acessar o item atual e {{${config.indexVariableName || 'index'}}} para o índice.`
+                    }
+                  </p>
+                  <p className="text-xs text-blue-200/80 mt-2">
+                    💡 <strong>Dica:</strong> Conecte o próximo nó que deseja executar para cada iteração.
+                    {config.loopMode === 'array' && ' Os resultados de todas as iterações serão coletados em loopResults.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+
       case 'CONDITION':
         // Parse existing expression or use defaults
         const parseExpression = (expr: string) => {
           if (!expr) return { value1: '', operator: '==', value2: '' }
-          
+
           // Check for array operators first
           if (expr.includes('.includes(') && !expr.includes('.toLowerCase()')) {
             // Array contains: contactTags.includes("vendas")
@@ -1362,17 +1759,17 @@ export default function NodeConfigModal({
               return { value1: match[1].replace(/^!/, ''), operator: expr.startsWith('!') ? '.array_not_contains(' : '.array_contains(', value2: match[2] }
             }
           }
-          
+
           if (expr.includes('.length === 0')) {
             const value1 = expr.replace('.length === 0', '').trim()
             return { value1, operator: '.array_is_empty', value2: '' }
           }
-          
+
           if (expr.includes('.length > 0')) {
             const value1 = expr.replace('.length > 0', '').trim()
             return { value1, operator: '.array_is_not_empty', value2: '' }
           }
-          
+
           // Check for array contains any/all (multiple OR/AND conditions)
           if (expr.includes(' || ') && expr.includes('.includes(')) {
             const parts = expr.split(' || ')
@@ -1386,7 +1783,7 @@ export default function NodeConfigModal({
               return { value1, operator: '.array_contains_any(', value2: values.join(', ') }
             }
           }
-          
+
           if (expr.includes(' && ') && expr.includes('.includes(')) {
             const parts = expr.split(' && ')
             const firstMatch = parts[0].match(/(.+?)\.includes\("([^"]+)"\)/)
@@ -1399,7 +1796,7 @@ export default function NodeConfigModal({
               return { value1, operator: '.array_contains_all(', value2: values.join(', ') }
             }
           }
-          
+
           // Try to parse expressions like "variables.opcao == 2"
           const operators = ['===', '!==', '==', '!=', '>=', '<=', '>', '<', '.includes(', '.startsWith(', '.endsWith(']
           for (const op of operators) {
@@ -1413,7 +1810,7 @@ export default function NodeConfigModal({
                 // Extract the actual value between quotes
                 const match = value2Raw.match(/"([^"]*)"/)
                 let value2 = match ? match[1] : value2Raw.replace(/[()'"]/g, '').replace(/\.toLowerCase\(\)/g, '')
-                
+
                 return {
                   value1,
                   operator: op,
@@ -1422,24 +1819,24 @@ export default function NodeConfigModal({
               }
             }
           }
-          
+
           return { value1: expr, operator: '==', value2: '' }
         }
 
         // Use state to manage condition parts independently
         const [conditionParts, setConditionParts] = useState(() => parseExpression(config.expression || ''))
-        
+
         // Update parts when config.expression changes externally
         useEffect(() => {
           setConditionParts(parseExpression(config.expression || ''))
         }, [config.expression])
-        
+
         const updateCondition = (field: string, value: string) => {
           const parts = { ...conditionParts, [field]: value }
           setConditionParts(parts)
-          
+
           let expression = ''
-          
+
           // Array operators
           if (parts.operator === '.array_contains(') {
             expression = `${parts.value1}.includes("${parts.value2}")`
@@ -1461,7 +1858,7 @@ export default function NodeConfigModal({
           } else {
             expression = `${parts.value1} ${parts.operator} ${parts.value2}`
           }
-          
+
           setConfig({ ...config, expression })
         }
 
@@ -1469,7 +1866,7 @@ export default function NodeConfigModal({
           <div className="space-y-6">
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-200 mb-4">Conditions</h3>
-              
+
               <div className="space-y-3">
                 {/* Value 1 */}
                 <div>
@@ -1535,10 +1932,10 @@ export default function NodeConfigModal({
                         conditionParts.operator.includes('array_contains_any') || conditionParts.operator.includes('array_contains_all')
                           ? "vendas, vip, premium (separe por vírgula)"
                           : conditionParts.operator.startsWith('.array_')
-                          ? "vendas"
-                          : conditionParts.operator.includes('(')
-                          ? "sim, s, ok (separe por vírgula)"
-                          : "2"
+                            ? "vendas"
+                            : conditionParts.operator.includes('(')
+                              ? "sim, s, ok (separe por vírgula)"
+                              : "2"
                       }
                       className="w-full px-3 py-2 bg-[#0a0a0a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono"
                     />
@@ -1583,7 +1980,7 @@ export default function NodeConfigModal({
             {/* Help Text */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Tip:</strong> Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">variables.name</code> to access saved variables, 
+                💡 <strong>Tip:</strong> Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">variables.name</code> to access saved variables,
                 or <code className="bg-blue-500/20 px-1 py-0.5 rounded">globals.contactId</code> for global values.
               </p>
             </div>
@@ -1592,7 +1989,7 @@ export default function NodeConfigModal({
 
       case 'SWITCH':
         const switchRules = config.rules || []
-        
+
         const addRule = () => {
           const newRule = {
             id: `rule-${Date.now()}`,
@@ -1603,13 +2000,13 @@ export default function NodeConfigModal({
           }
           setConfig({ ...config, rules: [...switchRules, newRule] })
         }
-        
+
         const updateRule = (index: number, field: string, value: string) => {
           const updated = [...switchRules]
           updated[index] = { ...updated[index], [field]: value }
           setConfig({ ...config, rules: updated })
         }
-        
+
         const removeRule = (index: number) => {
           const updated = switchRules.filter((_: any, i: number) => i !== index)
           setConfig({ ...config, rules: updated })
@@ -1627,7 +2024,7 @@ export default function NodeConfigModal({
                   + Adicionar Regra
                 </button>
               </div>
-              
+
               <div className="space-y-4">
                 {switchRules.map((rule: any, index: number) => (
                   <div key={rule.id} className="bg-[#0a0a0a] border border-gray-700 rounded-lg p-4">
@@ -1640,7 +2037,7 @@ export default function NodeConfigModal({
                         ✕ Remover
                       </button>
                     </div>
-                    
+
                     <div className="space-y-3">
                       {/* Value 1 */}
                       <div>
@@ -1722,8 +2119,8 @@ export default function NodeConfigModal({
             {/* Help Text */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> As regras são avaliadas em ordem. A primeira regra que corresponder determina o caminho de saída. 
-                Se nenhuma regra corresponder, a <strong>Saída Padrão</strong> será usada. 
+                💡 <strong>Dica:</strong> As regras são avaliadas em ordem. A primeira regra que corresponder determina o caminho de saída.
+                Se nenhuma regra corresponder, a <strong>Saída Padrão</strong> será usada.
                 Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">variables.nome</code> para acessar variáveis salvas.
               </p>
             </div>
@@ -1733,32 +2130,32 @@ export default function NodeConfigModal({
       case 'HTTP_REQUEST':
         const httpHeaders = config.headers || []
         const httpQueryParams = config.queryParams || []
-        
+
         const addHeader = () => {
           setConfig({ ...config, headers: [...httpHeaders, { key: '', value: '' }] })
         }
-        
+
         const updateHeader = (index: number, field: string, value: string) => {
           const updated = [...httpHeaders]
           updated[index] = { ...updated[index], [field]: value }
           setConfig({ ...config, headers: updated })
         }
-        
+
         const removeHeader = (index: number) => {
           const updated = httpHeaders.filter((_: any, i: number) => i !== index)
           setConfig({ ...config, headers: updated })
         }
-        
+
         const addQueryParam = () => {
           setConfig({ ...config, queryParams: [...httpQueryParams, { key: '', value: '' }] })
         }
-        
+
         const updateQueryParam = (index: number, field: string, value: string) => {
           const updated = [...httpQueryParams]
           updated[index] = { ...updated[index], [field]: value }
           setConfig({ ...config, queryParams: updated })
         }
-        
+
         const removeQueryParam = (index: number) => {
           const updated = httpQueryParams.filter((_: any, i: number) => i !== index)
           setConfig({ ...config, queryParams: updated })
@@ -1786,7 +2183,7 @@ export default function NodeConfigModal({
                   <option value="OPTIONS">OPTIONS</option>
                 </select>
               </div>
-              
+
               <div className="col-span-3">
                 <label className="block text-xs font-medium mb-1.5 text-gray-400">
                   URL
@@ -1804,7 +2201,7 @@ export default function NodeConfigModal({
             {/* Authentication */}
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-200 mb-3">Autenticação</h3>
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5 text-gray-400">
@@ -1908,7 +2305,7 @@ export default function NodeConfigModal({
                   + Adicionar
                 </button>
               </div>
-              
+
               <div className="space-y-2">
                 {httpQueryParams.map((param: any, index: number) => (
                   <div key={index} className="grid grid-cols-12 gap-2">
@@ -1951,7 +2348,7 @@ export default function NodeConfigModal({
                   + Adicionar
                 </button>
               </div>
-              
+
               <div className="space-y-2">
                 {httpHeaders.map((header: any, index: number) => (
                   <div key={index} className="grid grid-cols-12 gap-2">
@@ -1987,7 +2384,7 @@ export default function NodeConfigModal({
             {['POST', 'PUT', 'PATCH'].includes(config.method) && (
               <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
                 <h3 className="text-sm font-semibold text-gray-200 mb-3">Body</h3>
-                
+
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium mb-1.5 text-gray-400">
@@ -2022,7 +2419,7 @@ export default function NodeConfigModal({
             {/* Options */}
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-200 mb-3">Opções</h3>
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5 text-gray-400">
@@ -2067,7 +2464,7 @@ export default function NodeConfigModal({
             {/* Help Text */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">{'{{variables.nome}}'}</code> para interpolar variáveis na URL, headers, query params e body. 
+                💡 <strong>Dica:</strong> Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">{'{{variables.nome}}'}</code> para interpolar variáveis na URL, headers, query params e body.
                 A resposta será salva em <code className="bg-blue-500/20 px-1 py-0.5 rounded">variables.{config.saveResponseAs || 'httpResponse'}</code> e pode ser acessada nos próximos nodes.
               </p>
             </div>
@@ -2076,17 +2473,17 @@ export default function NodeConfigModal({
 
       case 'HTTP_SCRAPE':
         const scrapeHeaders = config.headers || []
-        
+
         const addScrapeHeader = () => {
           setConfig({ ...config, headers: [...scrapeHeaders, { key: '', value: '' }] })
         }
-        
+
         const updateScrapeHeader = (index: number, field: string, value: string) => {
           const updated = [...scrapeHeaders]
           updated[index] = { ...updated[index], [field]: value }
           setConfig({ ...config, headers: updated })
         }
-        
+
         const removeScrapeHeader = (index: number) => {
           const updated = scrapeHeaders.filter((_: any, i: number) => i !== index)
           setConfig({ ...config, headers: updated })
@@ -2111,7 +2508,7 @@ export default function NodeConfigModal({
             {/* Wait Strategy */}
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-200 mb-3">Estratégia de Espera</h3>
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5 text-gray-400">
@@ -2162,8 +2559,8 @@ export default function NodeConfigModal({
 
             {/* Extract Data */}
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">Extrair Dados</h3>
-              
+              <h3 className="text-sm font-semibold text-gray-200 mb-3">Manipular Dados HTML</h3>
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5 text-gray-400">
@@ -2197,27 +2594,315 @@ export default function NodeConfigModal({
                     </select>
                   </div>
                 )}
+
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                  <p className="text-xs text-blue-300 leading-relaxed">
+                    💡 <strong>Dica:</strong> Use o script JavaScript acima para manipular os dados extraídos.
+                    O HTML extraído estará disponível no contexto, e você pode processá-lo no script usando <code className="bg-blue-500/20 px-1 py-0.5 rounded font-mono">document.querySelector()</code> ou <code className="bg-blue-500/20 px-1 py-0.5 rounded font-mono">document.querySelectorAll()</code>.
+                  </p>
+                </div>
               </div>
             </div>
 
             {/* Execute Script */}
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-200 mb-3">Executar Script (opcional)</h3>
-              
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-200">Executar Script (opcional)</h3>
+                <button
+                  onClick={() => {
+                    if (!config.executeScript || !config.executeScript.trim()) {
+                      setScrapeTestResult({ error: 'Por favor, insira algum código para testar' })
+                      return
+                    }
+
+                    setTestingScrape(true)
+                    setScrapeTestResult(null)
+
+                    // Get HTML from multiple sources (priority order):
+                    // 1. User-provided HTML in testHTML field
+                    // 2. Real HTML from inputData (execution context)
+                    let htmlToUse = testHTML.trim()
+
+                    if (!htmlToUse) {
+                      // Try multiple sources to find HTML
+
+                      // Source 1: inputData.scrapeResponse.html
+                      if (inputData?.scrapeResponse?.html) {
+                        htmlToUse = inputData.scrapeResponse.html
+                      }
+                      // Source 2: inputData.html (direct)
+                      else if (inputData?.html) {
+                        htmlToUse = inputData.html
+                      }
+                      // Source 3: executionData.context.variables.scrapeResponse.html
+                      else if (executionData?.context?.variables?.scrapeResponse?.html) {
+                        htmlToUse = executionData.context.variables.scrapeResponse.html
+                      }
+                      // Source 4: Check executionLogs for previous HTTP_SCRAPE node output
+                      else if (executionLogs && executionLogs.length > 0) {
+                        // Find the most recent HTTP_SCRAPE node execution
+                        for (let i = executionLogs.length - 1; i >= 0; i--) {
+                          const log = executionLogs[i]
+                          const logType = log.eventType || log.type
+                          const nodeType = log.data?.nodeType || log.nodeType
+
+                          if (logType === 'node.executed' && nodeType === 'HTTP_SCRAPE') {
+                            const output = log.data?.output || log.output || {}
+                            if (output.scrapeResponse?.html) {
+                              htmlToUse = output.scrapeResponse.html
+                              break
+                            }
+                            // Also check variables
+                            const variables = log.data?.variables || log.variables || {}
+                            if (variables.scrapeResponse?.html) {
+                              htmlToUse = variables.scrapeResponse.html
+                              break
+                            }
+                          }
+                        }
+                      }
+                      // Source 5: inputData is a string
+                      else if (typeof inputData === 'string') {
+                        htmlToUse = inputData
+                      }
+                      // Source 6: Check all keys in inputData for scrapeResponse
+                      else if (inputData && typeof inputData === 'object') {
+                        for (const key in inputData) {
+                          if (inputData[key]?.scrapeResponse?.html) {
+                            htmlToUse = inputData[key].scrapeResponse.html
+                            break
+                          }
+                          if (inputData[key]?.html) {
+                            htmlToUse = inputData[key].html
+                            break
+                          }
+                        }
+                      }
+                    }
+
+                    // If no HTML found, show error
+                    if (!htmlToUse) {
+                      setScrapeTestResult({
+                        error: 'Nenhum HTML disponível para teste. Execute o workflow primeiro ou cole o HTML no campo acima.',
+                      })
+                      setTestingScrape(false)
+                      return
+                    }
+
+                    // Create mock variables context (similar to workflow execution)
+                    // These variables would be available in the actual workflow
+                    const mockScrapeResponse = {
+                      url: config.url || 'https://example.com',
+                      html: htmlToUse,
+                      scriptResult: null,
+                      screenshot: null,
+                      title: 'Test Page',
+                      timestamp: new Date().toISOString(),
+                    }
+
+                    const mockVariables = {
+                      scrapeResponse: mockScrapeResponse,
+                      contactTags: [],
+                      triggerMessage: '',
+                      // Add more mock variables as needed
+                    }
+
+                    // Execute code with variables available in scope
+                    try {
+                      // Wrap code to inject variables into scope
+                      // This makes variables like scrapeResponse available in the user's code
+                      const wrappedCode = `
+                        // Variables available in workflow execution context
+                        const scrapeResponse = ${JSON.stringify(mockScrapeResponse)};
+                        const contactTags = ${JSON.stringify(mockVariables.contactTags)};
+                        const triggerMessage = ${JSON.stringify(mockVariables.triggerMessage)};
+                        
+                        // Helper function to parse HTML from scrapeResponse.html
+                        function parseHTML(htmlString) {
+                          const parser = new DOMParser();
+                          return parser.parseFromString(htmlString, 'text/html');
+                        }
+                        
+                        // Helper: Get document from scrapeResponse.html
+                        // Usage: const doc = getHTMLDocument(scrapeResponse.html);
+                        function getHTMLDocument(htmlString) {
+                          return parseHTML(htmlString);
+                        }
+                        
+                        // Your code below - you can use scrapeResponse, contactTags, etc.
+                        // IMPORTANT: 
+                        // 1. The HTML is already in scrapeResponse.html - you just need to manipulate it!
+                        // 2. Use parseHTML(scrapeResponse.html) to create a document from the HTML string
+                        // 3. Don't use document directly - that refers to the current Puppeteer page, not scrapeResponse.html
+                        // 4. Always return a value!
+                        // 
+                        // Example:
+                        // const doc = parseHTML(scrapeResponse.html);
+                        // const products = doc.querySelectorAll('.items-list');
+                        // return Array.from(products).map(el => ({ text: el.textContent }));
+                        ${config.executeScript}
+                      `
+
+                      const executeCode = new Function(wrappedCode)
+                      const result = executeCode()
+
+                      setScrapeTestResult({
+                        success: true,
+                        output: result,
+                        note: 'Código executado com variáveis mock. No workflow, será executado na página carregada pelo Puppeteer com variáveis reais.',
+                        variables: mockVariables,
+                      })
+                    } catch (error: any) {
+                      setScrapeTestResult({
+                        success: false,
+                        error: error.message || 'Erro ao executar código',
+                        note: 'Certifique-se de estar na página correta ou que os seletores existem.',
+                        variables: mockVariables,
+                      })
+                    } finally {
+                      setTestingScrape(false)
+                    }
+                  }}
+                  disabled={testingScrape}
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition flex items-center gap-2"
+                >
+                  {testingScrape ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      Testando...
+                    </>
+                  ) : (
+                    <>
+                      ▶️ Testar Script
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Campo opcional para HTML real de teste */}
+              <div className="mb-4">
+                <label className="block text-xs font-medium mb-1.5 text-gray-400">
+                  HTML para Teste (opcional)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  {inputData?.scrapeResponse?.html || inputData?.html
+                    ? '✅ Usando HTML real da execução. Cole aqui para sobrescrever.'
+                    : 'Cole o HTML real do INPUT aqui para testar'}
+                </p>
+                <textarea
+                  value={testHTML}
+                  onChange={(e) => setTestHTML(e.target.value)}
+                  placeholder={inputData?.scrapeResponse?.html || inputData?.html
+                    ? "HTML real detectado! Cole aqui para sobrescrever..."
+                    : "Cole o HTML aqui..."}
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono text-xs"
+                  rows={4}
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-medium mb-1.5 text-gray-400">
                   Código JavaScript
                 </label>
-                <textarea
-                  value={config.executeScript || ''}
-                  onChange={(e) => setConfig({ ...config, executeScript: e.target.value })}
-                  placeholder="return document.querySelector('.price')?.textContent;"
-                  rows={6}
-                  className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500 font-mono resize-none"
-                />
+                <div className="bg-[#1e1e1e] border border-gray-700 rounded overflow-hidden">
+                  <CodeEditor
+                    value={config.executeScript || ''}
+                    onChange={(e: any) => setConfig({ ...config, executeScript: e.target.value })}
+                    language="javascript"
+                  />
+                </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  O código será executado na página e o resultado será salvo em scriptResult
+                  O código será executado na página e o resultado será salvo em scriptResult.
+                  Você pode usar variáveis como <code className="px-1 py-0.5 bg-gray-800 rounded text-primary font-mono">scrapeResponse</code>, <code className="px-1 py-0.5 bg-gray-800 rounded text-primary font-mono">contactTags</code>, etc.
                 </p>
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-blue-300 mb-2">
+                    💡 <strong>Manipular HTML:</strong> O HTML já está disponível em <code className="bg-blue-500/20 px-1 py-0.5 rounded font-mono">scrapeResponse.html</code>. Você só precisa manipulá-lo, não fazer scraping novamente!
+                  </p>
+                  <p className="text-xs text-yellow-300 mb-2 bg-yellow-500/10 p-2 rounded">
+                    ⚠️ <strong>Importante:</strong> Use <code className="bg-yellow-500/20 px-1 py-0.5 rounded font-mono">parseHTML(scrapeResponse.html)</code> para criar um documento a partir do HTML da variável. <strong>Não use <code className="bg-yellow-500/20 px-1 py-0.5 rounded font-mono">document</code> diretamente</strong> - isso se refere à página atual do Puppeteer, não ao HTML que está na variável.
+                  </p>
+                  <pre className="text-xs text-blue-200 font-mono bg-black/30 p-2 rounded overflow-x-auto">
+                    {`// O HTML já está em scrapeResponse.html - só precisa manipular!
+// 1. Parse do HTML da variável (OBRIGATÓRIO!)
+const doc = parseHTML(scrapeResponse.html);
+
+// 2. Encontrar elementos (ajuste o seletor conforme necessário)
+const products = doc.querySelectorAll('.items-list');
+
+// 3. Extrair dados e RETORNAR o resultado
+const produtos = Array.from(products).map((product, index) => {
+  const title = product.querySelector('h2.title, .title, [class*="title"]')?.textContent?.trim() || '';
+  const price = product.querySelector('.price, [class*="price"]')?.textContent?.trim() || '';
+  const link = product.querySelector('a')?.href || '';
+  const image = product.querySelector('img')?.src || '';
+  
+  return {
+    index: index + 1,
+    title,
+    price,
+    link,
+    image
+  };
+});
+
+// 4. IMPORTANTE: Sempre retorne um valor!
+return produtos;`}
+                  </pre>
+                  <p className="text-xs text-gray-400 mt-2">
+                    O resultado será salvo em <code className="bg-gray-800 px-1 py-0.5 rounded font-mono">scriptResult</code> e estará disponível para os próximos nodes.
+                  </p>
+                </div>
+
+                {/* Test Result */}
+                {scrapeTestResult && (
+                  <div className={`mt-4 border rounded-lg p-3 ${scrapeTestResult.error || !scrapeTestResult.success
+                    ? 'bg-red-500/10 border-red-500/30'
+                    : 'bg-green-500/10 border-green-500/30'
+                    }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className={`text-xs font-semibold ${scrapeTestResult.error || !scrapeTestResult.success ? 'text-red-300' : 'text-green-300'
+                        }`}>
+                        {scrapeTestResult.error || !scrapeTestResult.success ? '❌ Erro' : '✅ Sucesso'}
+                      </h4>
+                      <button
+                        onClick={() => setScrapeTestResult(null)}
+                        className="text-gray-400 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {scrapeTestResult.error ? (
+                      <div>
+                        <div className="text-xs text-red-300 font-mono bg-black/30 p-2 rounded mb-2">
+                          {scrapeTestResult.error}
+                        </div>
+                        {scrapeTestResult.note && (
+                          <div className="text-xs text-yellow-300 bg-yellow-500/10 p-2 rounded">
+                            {scrapeTestResult.note}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        {scrapeTestResult.note && (
+                          <div className="text-xs text-blue-300 mb-2 bg-blue-500/10 p-2 rounded">
+                            {scrapeTestResult.note}
+                          </div>
+                        )}
+                        {scrapeTestResult.variables && (
+                          <div className="text-xs text-gray-400 mb-2">
+                            Variáveis disponíveis: <code className="text-blue-300">scrapeResponse</code>, <code className="text-blue-300">contactTags</code>, <code className="text-blue-300">triggerMessage</code>
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-400 mb-1">Output:</div>
+                        <pre className="text-xs text-green-300 font-mono bg-black/30 p-2 rounded overflow-x-auto max-h-40 overflow-y-auto">
+                          {JSON.stringify(scrapeTestResult.output, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2232,7 +2917,7 @@ export default function NodeConfigModal({
                   + Adicionar
                 </button>
               </div>
-              
+
               <div className="space-y-2">
                 {scrapeHeaders.map((header: any, index: number) => (
                   <div key={index} className="grid grid-cols-12 gap-2">
@@ -2267,7 +2952,7 @@ export default function NodeConfigModal({
             {/* Options */}
             <div className="bg-[#151515] border border-gray-700 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-200 mb-3">Opções</h3>
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5 text-gray-400">
@@ -2303,12 +2988,12 @@ export default function NodeConfigModal({
                     <input
                       type="number"
                       value={config.viewport?.width || 1920}
-                      onChange={(e) => setConfig({ 
-                        ...config, 
-                        viewport: { 
-                          ...config.viewport, 
-                          width: parseInt(e.target.value) || 1920 
-                        } 
+                      onChange={(e) => setConfig({
+                        ...config,
+                        viewport: {
+                          ...config.viewport,
+                          width: parseInt(e.target.value) || 1920
+                        }
                       })}
                       className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500"
                     />
@@ -2320,12 +3005,12 @@ export default function NodeConfigModal({
                     <input
                       type="number"
                       value={config.viewport?.height || 1080}
-                      onChange={(e) => setConfig({ 
-                        ...config, 
-                        viewport: { 
-                          ...config.viewport, 
-                          height: parseInt(e.target.value) || 1080 
-                        } 
+                      onChange={(e) => setConfig({
+                        ...config,
+                        viewport: {
+                          ...config.viewport,
+                          height: parseInt(e.target.value) || 1080
+                        }
                       })}
                       className="w-full px-3 py-2 bg-[#1a1a1a] border border-gray-700 rounded focus:outline-none focus:border-primary text-sm text-white placeholder-gray-500"
                     />
@@ -2349,8 +3034,8 @@ export default function NodeConfigModal({
             {/* Help Text */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
               <p className="text-xs text-blue-300 leading-relaxed">
-                💡 <strong>Dica:</strong> Este node usa um navegador headless para renderizar páginas com JavaScript. 
-                Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">{'{{variables.nome}}'}</code> para interpolar variáveis na URL e scripts. 
+                💡 <strong>Dica:</strong> Este node usa um navegador headless para renderizar páginas com JavaScript.
+                Use <code className="bg-blue-500/20 px-1 py-0.5 rounded">{'{{variables.nome}}'}</code> para interpolar variáveis na URL e scripts.
                 A resposta será salva em <code className="bg-blue-500/20 px-1 py-0.5 rounded">variables.{config.saveResponseAs || 'scrapeResponse'}</code> com os campos: html, scriptResult, screenshot, title e timestamp.
               </p>
             </div>
@@ -2531,6 +3216,267 @@ export default function NodeConfigModal({
           </div>
         )
 
+      case 'COMMAND':
+        return (
+          <div className="space-y-6">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-200">
+                  Comando
+                </label>
+                <button
+                  onClick={async () => {
+                    if (!config.command || !config.command.trim()) {
+                      setCommandTestResult({ error: 'Por favor, insira um comando para testar' })
+                      return
+                    }
+
+                    if (!executionData?.id) {
+                      setCommandTestResult({ error: 'Nenhuma execução encontrada. Execute o workflow primeiro para testar o comando.' })
+                      return
+                    }
+
+                    // Save config first
+                    await onSave(node.id, config)
+                    await new Promise(resolve => setTimeout(resolve, 300))
+
+                    setTestingCommand(true)
+                    setCommandTestResult(null)
+
+                    try {
+                      const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
+                      const response = await fetch(`${API_URL}/api/workflows/${executionData.workflowId}/test-node?tenantId=${tenantId}&nodeId=${node.id}&executionId=${executionData.id}`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          tenantId,
+                          nodeId: node.id,
+                          executionId: executionData.id,
+                          nodeConfig: config,
+                        }),
+                      })
+
+                      if (!response.ok) {
+                        let errorMessage = 'Failed to test command'
+                        try {
+                          const errorData = await response.json()
+                          errorMessage = errorData.message || errorData.error || errorMessage
+                        } catch {
+                          const text = await response.text().catch(() => '')
+                          errorMessage = text || errorMessage
+                        }
+                        throw new Error(errorMessage)
+                      }
+
+                      const result = await response.json()
+
+                      // Wait a bit for execution to complete and then fetch logs
+                      await new Promise(resolve => setTimeout(resolve, 1000))
+
+                      // Fetch execution logs to get the actual output
+                      const logsResponse = await fetch(`${API_URL}/api/executions/${executionData.id}/logs?tenantId=${tenantId}`)
+                      const logsData = await logsResponse.json()
+                      
+                      // Find the log entry for this node execution
+                      const nodeLog = logsData.find((log: any) => 
+                        log.nodeId === node.id && 
+                        (log.eventType === 'node.executed' || log.type === 'node.executed')
+                      )
+
+                      if (nodeLog?.data?.output) {
+                        setCommandTestResult({
+                          success: true,
+                          output: nodeLog.data.output,
+                          stdout: nodeLog.data.output.stdout || '',
+                          stderr: nodeLog.data.output.stderr || '',
+                          exitCode: nodeLog.data.output.exitCode || 0,
+                          command: nodeLog.data.output.command || config.command,
+                        })
+                      } else {
+                        setCommandTestResult({
+                          success: true,
+                          output: result,
+                          note: 'Comando executado. Verifique os logs para mais detalhes.',
+                        })
+                      }
+                    } catch (error: any) {
+                      setCommandTestResult({
+                        success: false,
+                        error: error.message || 'Erro ao executar comando',
+                      })
+                    } finally {
+                      setTestingCommand(false)
+                    }
+                  }}
+                  disabled={testingCommand}
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition flex items-center gap-2"
+                >
+                  {testingCommand ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      Testando...
+                    </>
+                  ) : (
+                    <>
+                      ▶️ Testar
+                    </>
+                  )}
+                </button>
+              </div>
+              <textarea
+                value={config.command || ''}
+                onChange={(e) => setConfig({ ...config, command: e.target.value })}
+                placeholder="curl -X GET https://api.example.com/data"
+                rows={6}
+                className="w-full px-4 py-3 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary resize-none text-white placeholder-gray-500 font-mono text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Cole o comando completo aqui. Suporta variáveis como <code className="px-1.5 py-0.5 bg-gray-800 rounded text-primary">{`{{variables.url}}`}</code>
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-200">
+                Timeout (ms)
+              </label>
+              <input
+                type="number"
+                value={config.timeout || 30000}
+                onChange={(e) => setConfig({ ...config, timeout: parseInt(e.target.value) || 30000 })}
+                placeholder="30000"
+                min="1000"
+                className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Tempo máximo de execução em milissegundos (padrão: 30000 = 30 segundos)
+              </p>
+            </div>
+
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+              <p className="text-xs text-yellow-300 leading-relaxed">
+                ⚠️ <strong>Atenção:</strong> Este node executa comandos do sistema. Use com cuidado e apenas comandos confiáveis.
+              </p>
+            </div>
+
+            {/* Test Result */}
+            {commandTestResult && (
+              <div className={`border rounded-lg p-4 ${commandTestResult.error || !commandTestResult.success
+                ? 'bg-red-500/10 border-red-500/30'
+                : 'bg-green-500/10 border-green-500/30'
+                }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className={`text-sm font-semibold ${commandTestResult.error || !commandTestResult.success ? 'text-red-300' : 'text-green-300'
+                    }`}>
+                    {commandTestResult.error || !commandTestResult.success ? '❌ Erro' : '✅ Sucesso'}
+                  </h4>
+                  <button
+                    onClick={() => setCommandTestResult(null)}
+                    className="text-gray-400 hover:text-white text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {commandTestResult.error ? (
+                  <div className="text-xs text-red-300 font-mono bg-black/30 p-2 rounded">
+                    {commandTestResult.error}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {commandTestResult.command && (
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Comando executado:</div>
+                        <div className="text-xs text-gray-300 font-mono bg-black/30 p-2 rounded">
+                          {commandTestResult.command}
+                        </div>
+                      </div>
+                    )}
+                    {commandTestResult.exitCode !== undefined && (
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Código de saída:</div>
+                        <div className={`text-xs font-mono bg-black/30 p-2 rounded ${commandTestResult.exitCode === 0 ? 'text-green-300' : 'text-red-300'}`}>
+                          {commandTestResult.exitCode}
+                        </div>
+                      </div>
+                    )}
+                    {commandTestResult.stdout && (
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Saída (stdout):</div>
+                        <pre className="text-xs text-green-300 font-mono bg-black/30 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap">
+                          {commandTestResult.stdout}
+                        </pre>
+                      </div>
+                    )}
+                    {commandTestResult.stderr && (
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Erro (stderr):</div>
+                        <pre className="text-xs text-red-300 font-mono bg-black/30 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap">
+                          {commandTestResult.stderr}
+                        </pre>
+                      </div>
+                    )}
+                    {commandTestResult.note && (
+                      <div className="text-xs text-gray-400 italic">
+                        {commandTestResult.note}
+                      </div>
+                    )}
+                    {commandTestResult.output && !commandTestResult.stdout && !commandTestResult.stderr && (
+                      <div>
+                        <div className="text-xs text-gray-400 mb-2">Output:</div>
+                        <pre className="text-xs text-green-300 font-mono bg-black/30 p-3 rounded overflow-x-auto max-h-48 overflow-y-auto">
+                          {JSON.stringify(commandTestResult.output, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Variável de Saída
+                </label>
+                <input
+                  type="text"
+                  value={config.saveOutputAs || 'commandOutput'}
+                  onChange={(e) => setConfig({ ...config, saveOutputAs: e.target.value })}
+                  placeholder="commandOutput"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Variável de Erro
+                </label>
+                <input
+                  type="text"
+                  value={config.saveErrorAs || 'commandError'}
+                  onChange={(e) => setConfig({ ...config, saveErrorAs: e.target.value })}
+                  placeholder="commandError"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-200">
+                  Variável de Código de Saída
+                </label>
+                <input
+                  type="text"
+                  value={config.saveExitCodeAs || 'commandExitCode'}
+                  onChange={(e) => setConfig({ ...config, saveExitCodeAs: e.target.value })}
+                  placeholder="commandExitCode"
+                  className="w-full px-4 py-2.5 bg-[#151515] border border-gray-700 rounded focus:outline-none focus:border-primary text-white placeholder-gray-500 font-mono text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        )
+
       case 'CODE':
         return (
           <div className="space-y-6">
@@ -2547,16 +3493,186 @@ export default function NodeConfigModal({
                 <option value="runOnceForEachItem">Executar uma vez para cada item</option>
               </select>
               <p className="text-xs text-gray-500 mt-1.5">
-                {config.mode === 'runOnceForEachItem' 
+                {config.mode === 'runOnceForEachItem'
                   ? 'O código será executado separadamente para cada item de entrada'
                   : 'O código será executado uma única vez com todos os itens'}
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-200">
-                Código JavaScript
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-200">
+                  Código JavaScript
+                </label>
+                <button
+                  onClick={() => {
+                    if (!config.code || !config.code.trim()) {
+                      setCodeTestResult({ error: 'Por favor, insira algum código para testar' })
+                      return
+                    }
+
+                    setTestingCode(true)
+                    setCodeTestResult(null)
+
+                    try {
+                      // Use real variables from previous nodes (executionData or inputData)
+                      // Also merge output from previous node so stdout, stderr, etc. are available
+                      const previousOutput = executionData?.context?.output || {}
+                      const realVariables = {
+                        ...previousOutput,
+                        ...(executionData?.context?.variables || inputData || {})
+                      }
+                      const realGlobals = executionData?.context?.globals || { tenantId: tenantId || 'demo-tenant' }
+                      const realInput = executionData?.context?.input || inputData || {}
+
+                      // Helper functions (matching backend implementation)
+                      const parseHTML = (htmlString: string) => {
+                        const parser = new DOMParser();
+                        return parser.parseFromString(htmlString, 'text/html');
+                      }
+
+                      const getHTMLDocument = (htmlString: string) => {
+                        return parseHTML(htmlString);
+                      }
+
+                      const nodeListToArray = (nodeList: any) => {
+                        return Array.from(nodeList);
+                      }
+
+                      // Enhanced helper functions for easier HTML manipulation
+                      const createHelpers = (htmlString: string) => {
+                        const doc = parseHTML(htmlString);
+
+                        return {
+                          // querySelector shortcut - returns first matching element
+                          $: (selector: string) => doc.querySelector(selector),
+
+                          // querySelectorAll shortcut - returns array of matching elements
+                          $$: (selector: string) => Array.from(doc.querySelectorAll(selector)),
+
+                          // Get text content from selector or element
+                          getText: (selectorOrElement: string | any) => {
+                            const el = typeof selectorOrElement === 'string'
+                              ? doc.querySelector(selectorOrElement)
+                              : selectorOrElement;
+                            return el?.textContent?.trim() || '';
+                          },
+
+                          // Get attribute from selector or element
+                          getAttr: (selectorOrElement: string | any, attrName: string) => {
+                            const el = typeof selectorOrElement === 'string'
+                              ? doc.querySelector(selectorOrElement)
+                              : selectorOrElement;
+                            return el?.getAttribute(attrName) || '';
+                          },
+
+                          // Map over elements and extract data
+                          mapElements: (selector: string, mapFn: (el: any, index: number) => any) => {
+                            const elements = Array.from(doc.querySelectorAll(selector));
+                            return elements.map(mapFn);
+                          },
+
+                          // Get all text from multiple elements
+                          getAllText: (selector: string) => {
+                            const elements = Array.from(doc.querySelectorAll(selector));
+                            return elements.map(el => el.textContent?.trim() || '');
+                          },
+
+                          // Get all attributes from multiple elements
+                          getAllAttrs: (selector: string, attrName: string) => {
+                            const elements = Array.from(doc.querySelectorAll(selector));
+                            return elements.map(el => el.getAttribute(attrName) || '');
+                          },
+
+                          // Direct access to document for advanced queries
+                          doc,
+                        };
+                      };
+
+                      // Wrap code to inject variables and helper functions into scope
+                      const wrappedCode = `
+                        return (function(parseHTMLParam, getHTMLDocumentParam, nodeListToArrayParam, createHelpersParam) {
+                          // Make helper functions available in this scope
+                          const parseHTML = parseHTMLParam;
+                          const getHTMLDocument = getHTMLDocumentParam;
+                          const nodeListToArray = nodeListToArrayParam;
+                          
+                          // Inject variables directly into scope for easier access
+                          const scrapeResponse = variables.scrapeResponse || null;
+                          const contactTags = variables.contactTags || [];
+                          const triggerMessage = variables.triggerMessage || '';
+                          
+                          // Create HTML helpers if scrapeResponse.html exists
+                          const html = scrapeResponse?.html || null;
+                          const helpers = html ? createHelpersParam(html) : {
+                            $: () => null,
+                            $$: () => [],
+                            getText: () => '',
+                            getAttr: () => '',
+                            mapElements: () => [],
+                            getAllText: () => [],
+                            getAllAttrs: () => [],
+                            doc: null
+                          };
+                          
+                          // Destructure helpers for easy access (always available now)
+                          const $ = helpers.$;
+                          const $$ = helpers.$$;
+                          const getText = helpers.getText;
+                          const getAttr = helpers.getAttr;
+                          const mapElements = helpers.mapElements;
+                          const getAllText = helpers.getAllText;
+                          const getAllAttrs = helpers.getAllAttrs;
+                          const doc = helpers.doc;
+                          
+                          // Make all variables available at root level
+                          ${Object.keys(realVariables).map(key => {
+                        if (['scrapeResponse', 'contactTags', 'triggerMessage'].includes(key)) {
+                          return '';
+                        }
+                        return `const ${key} = variables.${key};`;
+                      }).filter(Boolean).join('\n')}
+                          
+                          // Helper functions are available in this scope
+                          ${config.code}
+                        })(parseHTML, getHTMLDocument, nodeListToArray, createHelpers);
+                      `
+
+                      // Execute code using Function constructor (safer than eval)
+                      const executeCode = new Function('variables', 'globals', 'input', 'parseHTML', 'getHTMLDocument', 'nodeListToArray', 'createHelpers', wrappedCode)
+                      const result = executeCode(realVariables, realGlobals, realInput, parseHTML, getHTMLDocument, nodeListToArray, createHelpers)
+
+                      setCodeTestResult({
+                        success: true,
+                        output: result,
+                        note: realVariables.scrapeResponse
+                          ? 'Código testado com variáveis reais do node anterior.'
+                          : 'Código testado. Variáveis do node anterior não disponíveis.',
+                      })
+                    } catch (error: any) {
+                      setCodeTestResult({
+                        success: false,
+                        error: error.message || 'Erro ao executar código',
+                      })
+                    } finally {
+                      setTestingCode(false)
+                    }
+                  }}
+                  disabled={testingCode}
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition flex items-center gap-2"
+                >
+                  {testingCode ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      Testando...
+                    </>
+                  ) : (
+                    <>
+                      ▶️ Testar
+                    </>
+                  )}
+                </button>
+              </div>
               <div className="bg-[#1e1e1e] border border-gray-700 rounded overflow-hidden">
                 <CodeEditor
                   value={config.code || ''}
@@ -2569,6 +3685,39 @@ export default function NodeConfigModal({
                   Use <code className="px-1.5 py-0.5 bg-gray-800 rounded text-primary font-mono">variables</code> para acessar variáveis do contexto
                 </span>
               </div>
+
+              {/* Test Result */}
+              {codeTestResult && (
+                <div className={`mt-4 border rounded-lg p-4 ${codeTestResult.error || !codeTestResult.success
+                  ? 'bg-red-500/10 border-red-500/30'
+                  : 'bg-green-500/10 border-green-500/30'
+                  }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className={`text-sm font-semibold ${codeTestResult.error || !codeTestResult.success ? 'text-red-300' : 'text-green-300'
+                      }`}>
+                      {codeTestResult.error || !codeTestResult.success ? '❌ Erro' : '✅ Sucesso'}
+                    </h4>
+                    <button
+                      onClick={() => setCodeTestResult(null)}
+                      className="text-gray-400 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {codeTestResult.error ? (
+                    <div className="text-xs text-red-300 font-mono bg-black/30 p-2 rounded">
+                      {codeTestResult.error}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-2">Output:</div>
+                      <pre className="text-xs text-green-300 font-mono bg-black/30 p-3 rounded overflow-x-auto max-h-48 overflow-y-auto">
+                        {JSON.stringify(codeTestResult.output, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Help Text */}
@@ -2589,7 +3738,7 @@ export default function NodeConfigModal({
                 <div>
                   <p className="text-xs text-gray-400 mb-1">Transformar dados HTTP:</p>
                   <pre className="text-xs bg-black/50 p-2 rounded text-gray-300 font-mono overflow-x-auto">
-{`const data = variables.httpResponse.body;
+                    {`const data = variables.httpResponse.body;
 return {
   title: data.title.toUpperCase(),
   isComplete: data.completed
@@ -2599,7 +3748,7 @@ return {
                 <div>
                   <p className="text-xs text-gray-400 mb-1">Filtrar array:</p>
                   <pre className="text-xs bg-black/50 p-2 rounded text-gray-300 font-mono overflow-x-auto">
-{`const items = variables.items || [];
+                    {`const items = variables.items || [];
 return {
   filtered: items.filter(i => i.active)
 };`}
@@ -2629,11 +3778,10 @@ return {
         <div className="flex border-b border-gray-800 bg-[#0d0d0d]">
           <button
             onClick={() => setActiveTab('parameters')}
-            className={`px-3 py-1.5 text-[11px] font-medium transition relative ${
-              activeTab === 'parameters'
-                ? 'text-white'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
+            className={`px-3 py-1.5 text-[11px] font-medium transition relative ${activeTab === 'parameters'
+              ? 'text-white'
+              : 'text-gray-400 hover:text-gray-200'
+              }`}
           >
             Parameters
             {activeTab === 'parameters' && (
@@ -2642,11 +3790,10 @@ return {
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`px-3 py-1.5 text-[11px] font-medium transition relative ${
-              activeTab === 'settings'
-                ? 'text-white'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
+            className={`px-3 py-1.5 text-[11px] font-medium transition relative ${activeTab === 'settings'
+              ? 'text-white'
+              : 'text-gray-400 hover:text-gray-200'
+              }`}
           >
             Settings
             {activeTab === 'settings' && (
@@ -2673,13 +3820,12 @@ return {
           <button
             onClick={handleSave}
             disabled={saving || saveSuccess}
-            className={`w-full px-4 py-2 rounded text-xs font-semibold transition flex items-center justify-center gap-2 ${
-              saveSuccess 
-                ? 'bg-green-500 text-white' 
-                : saving 
-                  ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-                  : 'bg-primary text-black hover:bg-primary/90'
-            }`}
+            className={`w-full px-4 py-2 rounded text-xs font-semibold transition flex items-center justify-center gap-2 ${saveSuccess
+              ? 'bg-green-500 text-white'
+              : saving
+                ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                : 'bg-primary text-black hover:bg-primary/90'
+              }`}
           >
             {saving && (
               <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -2704,9 +3850,9 @@ return {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-primary to-green-400 rounded-lg flex items-center justify-center text-xl">
               {node.type === WorkflowNodeType.TRIGGER_MESSAGE ? '📨' :
-               node.type === WorkflowNodeType.SEND_MESSAGE ? '💬' :
-               node.type === WorkflowNodeType.WAIT_REPLY ? '⏳' :
-               node.type === WorkflowNodeType.CONDITION ? '🔀' : '⚙️'}
+                node.type === WorkflowNodeType.SEND_MESSAGE ? '💬' :
+                  node.type === WorkflowNodeType.WAIT_REPLY ? '⏳' :
+                    node.type === WorkflowNodeType.CONDITION ? '🔀' : '⚙️'}
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">
@@ -2727,11 +3873,10 @@ return {
         <div className="flex border-b border-gray-700 bg-[#151515]">
           <button
             onClick={() => setActiveTab('parameters')}
-            className={`px-6 py-3 text-sm font-medium transition relative ${
-              activeTab === 'parameters'
-                ? 'text-white'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
+            className={`px-6 py-3 text-sm font-medium transition relative ${activeTab === 'parameters'
+              ? 'text-white'
+              : 'text-gray-400 hover:text-gray-200'
+              }`}
           >
             Parâmetros
             {activeTab === 'parameters' && (
@@ -2740,11 +3885,10 @@ return {
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`px-6 py-3 text-sm font-medium transition relative ${
-              activeTab === 'settings'
-                ? 'text-white'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
+            className={`px-6 py-3 text-sm font-medium transition relative ${activeTab === 'settings'
+              ? 'text-white'
+              : 'text-gray-400 hover:text-gray-200'
+              }`}
           >
             Configurações
             {activeTab === 'settings' && (
@@ -2782,13 +3926,12 @@ return {
           <button
             onClick={handleSave}
             disabled={saving || saveSuccess}
-            className={`px-8 py-2 rounded font-semibold transition shadow-lg flex items-center gap-2 ${
-              saveSuccess 
-                ? 'bg-green-500 text-white' 
-                : saving 
-                  ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-                  : 'bg-primary text-black hover:bg-primary/90'
-            }`}
+            className={`px-8 py-2 rounded font-semibold transition shadow-lg flex items-center gap-2 ${saveSuccess
+              ? 'bg-green-500 text-white'
+              : saving
+                ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                : 'bg-primary text-black hover:bg-primary/90'
+              }`}
           >
             {saving && (
               <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

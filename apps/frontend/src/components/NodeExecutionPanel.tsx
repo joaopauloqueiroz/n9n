@@ -55,43 +55,30 @@ export default function NodeExecutionPanel({
 
   const loadExecutionData = async () => {
     if (!executionId) return
-    
+
     try {
       setLoading(true)
-      
+
       // Load execution details
       try {
         const data = await apiClient.getExecution(tenantId, executionId)
-        console.log('[NodeExecutionPanel] Loaded execution data:', data)
-        console.log('[NodeExecutionPanel] Context variables:', data?.context?.variables)
         setExecutionData(data)
       } catch (error: any) {
-        if (error.response?.status === 404) {
-          console.warn('[loadExecutionData] Execution not found:', executionId)
-        } else {
-          console.error('[loadExecutionData] Failed to load execution:', error)
+        if (error.response?.status !== 404) {
+          console.error('Failed to load execution:', error)
         }
       }
 
       // Load execution logs to get node-specific data
       try {
         const logs = await apiClient.getExecutionLogs(tenantId, executionId)
-        console.log('[loadExecutionData] Loaded execution logs:', logs)
-        console.log('[loadExecutionData] Logs count:', logs.length)
         logs.forEach((log: any, index: number) => {
-          console.log(`[loadExecutionData] Log ${index}:`, {
-            eventType: log.eventType,
-            nodeId: log.nodeId,
-            data: log.data,
-            output: log.data?.output
-          })
+          // Process logs
         })
         setExecutionLogs(logs)
       } catch (error: any) {
-        if (error.response?.status === 404) {
-          console.warn('[loadExecutionData] Execution logs not found:', executionId)
-        } else {
-          console.error('[loadExecutionData] Failed to load logs:', error)
+        if (error.response?.status !== 404) {
+          console.error('Failed to load logs:', error)
         }
       }
     } catch (error) {
@@ -103,18 +90,15 @@ export default function NodeExecutionPanel({
 
   const loadWorkflowNodes = async () => {
     if (!executionData?.workflowId) {
-      console.log('[loadWorkflowNodes] No workflowId yet')
       return
     }
-    
+
     try {
-      console.log('[loadWorkflowNodes] Loading nodes for workflow:', executionData.workflowId)
       const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
       const workflowUrl = `${API_URL}/api/workflows/${executionData.workflowId}?tenantId=${tenantId}`
       const response = await fetch(workflowUrl)
       if (response.ok) {
         const workflow = await response.json()
-        console.log('[loadWorkflowNodes] Loaded nodes:', workflow.nodes?.length)
         setWorkflowNodes(workflow.nodes || [])
       }
     } catch (error) {
@@ -129,63 +113,173 @@ export default function NodeExecutionPanel({
         return logType === 'node.executed' && log.nodeId === selectedNodeId
       }
     )
-    
-    console.log('[getCurrentNodeData] selectedNodeId:', selectedNodeId)
-    console.log('[getCurrentNodeData] nodeExecutedLog:', nodeExecutedLog)
-    
+
     if (nodeExecutedLog?.data) {
       // The backend saves the entire event in the 'data' field
       // The event itself is stored directly in log.data
       const eventData = nodeExecutedLog.data
-      console.log('[getCurrentNodeData] eventData (raw):', eventData)
-      console.log('[getCurrentNodeData] eventData.output:', eventData?.output)
-      console.log('[getCurrentNodeData] eventData.variables:', eventData?.variables)
-      
+
       // Return the event data directly - it contains output, variables, etc.
       return eventData
     }
-    
-    console.log('[getCurrentNodeData] Fallback to executionData.context:', executionData?.context)
+
     return executionData?.context || {}
   }
 
   const getNodeInputData = () => {
-    const nodeData = getCurrentNodeData()
+    // If a different node is selected, show its OUTPUT
+    if (selectedNodeId !== node.id) {
+      const nodeExecutedLog = executionLogs.find(
+        (log) => {
+          const logType = log.eventType || log.type
+          return logType === 'node.executed' && log.nodeId === selectedNodeId
+        }
+      )
+
+      if (nodeExecutedLog?.data) {
+        const eventData = nodeExecutedLog.data
+        const nodeType = eventData?.nodeType || nodeExecutedLog.nodeType
+        
+        // Special handling for LOOP node - show the current item with all properties
+        if (nodeType === 'LOOP') {
+          // Get variables from context to find the current item
+          const variables = eventData?.variables || eventData?.data?.variables || {}
+          const loopItemVar = variables._loopItemVariable || 'item'
+          const loopIndexVar = variables._loopIndexVariable || 'index'
+          
+          // Build result with item and index
+          const result: Record<string, any> = {}
+          
+          if (variables[loopItemVar]) {
+            result[loopItemVar] = variables[loopItemVar]
+          }
+          if (variables[loopIndexVar] !== undefined) {
+            result[loopIndexVar] = variables[loopIndexVar]
+          }
+          
+          // Also include loop metadata if available
+          if (eventData?.output) {
+            const output = eventData.output
+            // Include non-internal metadata
+            Object.entries(output).forEach(([key, value]) => {
+              if (!key.startsWith('_') && !result[key]) {
+                result[key] = value
+              }
+            })
+          }
+          
+          if (Object.keys(result).length > 0) {
+            return result
+          }
+        }
+        
+        // For other nodes, show only the OUTPUT (clean, no internal vars)
+        if (eventData?.output && typeof eventData.output === 'object' && Object.keys(eventData.output).length > 0) {
+          return eventData.output
+        }
+      }
+      return {}
+    }
+
+    // For the current node, show INPUT (output from previous node + loop variables if inside loop)
+    const nodeExecutedLog = executionLogs.find(
+      (log) => {
+        const logType = log.eventType || log.type
+        return logType === 'node.executed' && log.nodeId === node.id
+      }
+    )
+
+    if (nodeExecutedLog?.data) {
+      const eventData = nodeExecutedLog.data
+      
+      // Get variables from context (includes loop variables like item, index)
+      const variables = eventData?.variables || eventData?.data?.variables || {}
+      
+      // Extract loop variables (item, index) if we're inside a loop
+      const loopItemVar = variables._loopItemVariable || 'item'
+      const loopIndexVar = variables._loopIndexVariable || 'index'
+      const loopVariables: Record<string, any> = {}
+      
+      if (variables[loopItemVar]) {
+        loopVariables[loopItemVar] = variables[loopItemVar]
+      }
+      if (variables[loopIndexVar] !== undefined) {
+        loopVariables[loopIndexVar] = variables[loopIndexVar]
+      }
+      
+      // Find previous node's output
+      const currentNodeIndex = executionLogs.findIndex(
+        (log) => {
+          const logType = log.eventType || log.type
+          return logType === 'node.executed' && log.nodeId === node.id
+        }
+      )
+
+      let previousOutput: Record<string, any> = {}
+      if (currentNodeIndex > 0) {
+        const previousLogs = executionLogs.slice(0, currentNodeIndex).reverse()
+        for (const log of previousLogs) {
+          const logType = log.eventType || log.type
+          if (logType === 'node.executed' && log.data?.output) {
+            const output = log.data.output
+            // Filter out internal variables
+            previousOutput = Object.fromEntries(
+              Object.entries(output).filter(([key]) => !key.startsWith('_'))
+            )
+            if (Object.keys(previousOutput).length > 0) {
+              break
+            }
+          }
+        }
+      }
+      
+      // Combine: previous output + loop variables (loop variables take precedence)
+      // This matches n8n behavior - shows previous output but loop vars are available
+      return { ...previousOutput, ...loopVariables }
+    }
+
+    // Fallback: use context output (filtered)
+    const context = executionData?.context || {}
+    const contextOutput = context.output || {}
+    const contextVariables = context.variables || {}
     
-    // Input é o output do node anterior
-    const input = nodeData?.input || {}
-    
-    // Se input estiver vazio, tente pegar das variables (fallback)
-    if (Object.keys(input).length === 0 && nodeData?.variables) {
-      return nodeData.variables
+    // Extract loop variables if inside loop
+    const loopItemVar = contextVariables._loopItemVariable || 'item'
+    const loopIndexVar = contextVariables._loopIndexVariable || 'index'
+    const loopVars: Record<string, any> = {}
+    if (contextVariables[loopItemVar]) {
+      loopVars[loopItemVar] = contextVariables[loopItemVar]
+    }
+    if (contextVariables[loopIndexVar] !== undefined) {
+      loopVars[loopIndexVar] = contextVariables[loopIndexVar]
     }
     
-    return input
+    const cleanOutput = Object.fromEntries(
+      Object.entries(contextOutput).filter(([key]) => !key.startsWith('_'))
+    )
+    
+    return { ...cleanOutput, ...loopVars }
   }
 
   const getNodeOutputData = () => {
     const nodeData = getCurrentNodeData()
-    console.log('[getNodeOutputData] nodeData:', nodeData)
-    console.log('[getNodeOutputData] nodeData.output:', nodeData?.output)
-    
+
     if (nodeData?.output && Object.keys(nodeData.output).length > 0) {
-      console.log('[getNodeOutputData] Returning nodeData.output:', nodeData.output)
       return nodeData.output
     }
-    
+
     // Fallback para variables se output estiver vazio
     const variables = nodeData?.variables || {}
-    console.log('[getNodeOutputData] Returning variables (fallback):', variables)
     return variables
   }
 
   const getExecutedNodes = () => {
     const nodeMap = new Map<string, any>()
-    
+
     executionLogs.forEach((log) => {
       // Use eventType (from DB) or type (from WebSocket)
       const logType = log.eventType || log.type
-      
+
       if (logType === 'node.executed' && log.nodeId) {
         nodeMap.set(log.nodeId, {
           id: log.nodeId,
@@ -194,11 +288,11 @@ export default function NodeExecutionPanel({
         })
       }
     })
-    
-    let result = Array.from(nodeMap.values()).sort((a, b) => 
+
+    let result = Array.from(nodeMap.values()).sort((a, b) =>
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     )
-    
+
     // Fallback: se não houver nodes executados, adicione pelo menos o node atual
     if (result.length === 0 && node) {
       result = [{
@@ -207,14 +301,14 @@ export default function NodeExecutionPanel({
         timestamp: new Date().toISOString()
       }]
     }
-    
+
     return result
   }
 
   const getCurrentNode = () => {
     const executed = getExecutedNodes().find(n => n.id === selectedNodeId)
     if (executed) return executed
-    
+
     // Fallback to the node prop if not in executed list yet
     return {
       id: node.id,
@@ -234,17 +328,12 @@ export default function NodeExecutionPanel({
   const configNode = useMemo(() => {
     // Always use configNodeId (fixed) for the configuration, not selectedNodeId
     const foundNode = workflowNodes.find(n => n.id === configNodeId)
-    console.log('[configNode useMemo] configNodeId (FIXED):', configNodeId)
-    console.log('[configNode useMemo] selectedNodeId (changes):', selectedNodeId)
-    console.log('[configNode useMemo] workflowNodes:', workflowNodes.length)
-    console.log('[configNode useMemo] foundNode:', foundNode)
-    
+
     // Fallback: if not found in workflowNodes, use the initial node prop
     if (!foundNode) {
-      console.log('[configNode useMemo] Using initial node prop as fallback')
       return node
     }
-    
+
     return foundNode
   }, [workflowNodes, configNodeId, node]) // Dependencies: workflowNodes and configNodeId (NOT selectedNodeId!)
 
@@ -493,8 +582,8 @@ export default function NodeExecutionPanel({
         <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-2">
           <div className="text-4xl opacity-20">📭</div>
           <p className="text-xs">
-            {isInput 
-              ? 'No input data (this might be the first node)' 
+            {isInput
+              ? 'No input data (this might be the first node)'
               : 'No output data available'}
           </p>
         </div>
@@ -507,7 +596,7 @@ export default function NodeExecutionPanel({
         const currentPath = path ? `${path}.${key}` : key
         const isObject = typeof value === 'object' && value !== null && !Array.isArray(value)
         const isArray = Array.isArray(value)
-        
+
         return (
           <div key={currentPath} className="ml-4">
             <div className="flex items-center gap-2 group">
@@ -526,7 +615,7 @@ export default function NodeExecutionPanel({
               </span>
               <span className="text-gray-500">:</span>
               {!isObject && !isArray && (
-                <span 
+                <span
                   className="text-gray-300 cursor-move hover:bg-gray-700/30 px-1 rounded"
                   draggable={true}
                   onDragStart={(e) => {
@@ -546,22 +635,30 @@ export default function NodeExecutionPanel({
             {isArray && value.length > 0 && (
               <div className="ml-4">
                 {value.map((item: any, index: number) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <span className="text-gray-500">{index}:</span>
-                    {typeof item === 'object' ? (
-                      renderDraggableJson(item, `${currentPath}[${index}]`, level + 1)
-                    ) : (
-                      <span 
-                        className="text-gray-300 cursor-move hover:bg-gray-700/30 px-1 rounded"
-                        draggable={true}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('text/plain', `{{${currentPath}[${index}]}}`)
-                          e.dataTransfer.effectAllowed = 'copy'
-                        }}
-                        title={`Drag to use: {{${currentPath}[${index}]}}`}
-                      >
-                        {typeof item === 'string' ? `"${item}"` : String(item)}
-                      </span>
+                  <div key={index} className="mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">{index}:</span>
+                      {typeof item === 'object' ? (
+                        <span className="text-gray-500">{'{'}</span>
+                      ) : (
+                        <span
+                          className="text-gray-300 cursor-move hover:bg-gray-700/30 px-1 rounded"
+                          draggable={true}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', `{{${currentPath}[${index}]}}`)
+                            e.dataTransfer.effectAllowed = 'copy'
+                          }}
+                          title={`Drag to use: {{${currentPath}[${index}]}}`}
+                        >
+                          {typeof item === 'string' ? `"${item}"` : String(item)}
+                        </span>
+                      )}
+                    </div>
+                    {typeof item === 'object' && (
+                      <>
+                        {renderDraggableJson(item, `${currentPath}[${index}]`, level + 1)}
+                        <span className="text-gray-500 ml-4">{'}'}</span>
+                      </>
                     )}
                   </div>
                 ))}
@@ -705,8 +802,8 @@ export default function NodeExecutionPanel({
 
   const executedNodes = getExecutedNodes()
   const currentNode = getCurrentNode()
-  const inputData = getNodeInputData() // Muda com selectedNodeId
-  
+  const inputData = getNodeInputData() // Muda com selectedNodeId - mostra output do node selecionado
+
   // OUTPUT - muda com selectedNodeId para mostrar output do node selecionado
   const getOutputData = () => {
     const nodeExecutedLog = executionLogs.find(
@@ -715,68 +812,73 @@ export default function NodeExecutionPanel({
         return logType === 'node.executed' && log.nodeId === selectedNodeId
       }
     )
-    
-    console.log('[getOutputData] nodeExecutedLog:', nodeExecutedLog)
-    console.log('[getOutputData] selectedNodeId:', selectedNodeId)
-    console.log('[getOutputData] executionLogs count:', executionLogs.length)
-    
+
     if (nodeExecutedLog?.data) {
-      // Event data is stored directly in log.data
       const eventData = nodeExecutedLog.data
-      console.log('[getOutputData] eventData:', eventData)
-      console.log('[getOutputData] eventData.output:', eventData?.output)
-      
-      // Try output first (from node execution result)
-      if (eventData?.output && Object.keys(eventData.output).length > 0) {
-        console.log('[getOutputData] Returning eventData.output:', eventData.output)
-        return eventData.output
+      const nodeType = eventData?.nodeType || nodeExecutedLog.nodeType
+
+      // Special handling for LOOP node - show the current item with all properties
+      if (nodeType === 'LOOP') {
+        // Get variables from context to find the current item
+        const variables = eventData?.variables || eventData?.data?.variables || {}
+        const loopItemVar = variables._loopItemVariable || 'item'
+        const loopIndexVar = variables._loopIndexVariable || 'index'
+        
+        // Build result with item and index
+        const result: Record<string, any> = {}
+        
+        if (variables[loopItemVar]) {
+          result[loopItemVar] = variables[loopItemVar]
+        }
+        if (variables[loopIndexVar] !== undefined) {
+          result[loopIndexVar] = variables[loopIndexVar]
+        }
+        
+        // Also include loop metadata if available
+        if (eventData?.output) {
+          const output = eventData.output
+          // Include non-internal metadata
+          Object.entries(output).forEach(([key, value]) => {
+            if (!key.startsWith('_') && !result[key]) {
+              result[key] = value
+            }
+          })
+        }
+        
+        if (Object.keys(result).length > 0) {
+          return result
+        }
       }
-      
-      // Fallback to nested data structure (for compatibility)
-      const nestedData = eventData.data || eventData
-      if (nestedData?.output && Object.keys(nestedData.output).length > 0) {
-        console.log('[getOutputData] Returning nestedData.output:', nestedData.output)
-        return nestedData.output
+
+      // Get output from node execution
+      let output = eventData?.output || eventData?.data?.output || {}
+
+      // Filter out internal variables (starting with _) - like n8n does
+      const cleanOutput = Object.fromEntries(
+        Object.entries(output).filter(([key]) => !key.startsWith('_'))
+      )
+
+      if (Object.keys(cleanOutput).length > 0) {
+        return cleanOutput
       }
-      
-      // Fallback to variables from context (some nodes save output in variables)
-      const variables = nestedData?.variables || eventData?.variables || {}
-      console.log('[getOutputData] Returning variables (fallback):', variables)
-      return variables
     }
-    
-    // Final fallback to execution context
-    const context = executionData?.context || {}
-    const contextOutput = context.output || {}
-    
-    console.log('[getOutputData] Context:', context)
-    console.log('[getOutputData] Context output:', contextOutput)
-    
-    // If we have output in context, return it
-    if (contextOutput && Object.keys(contextOutput).length > 0) {
-      console.log('[getOutputData] Returning context.output:', contextOutput)
-      return contextOutput
-    }
-    
-    // Last resort: return empty object so UI can show "No output"
-    console.log('[getOutputData] No output found, returning empty object')
+
     return {}
   }
-  
-  const outputData = getOutputData() // Muda com selectedNodeId
-  console.log('[NodeExecutionPanel] Final outputData for node', selectedNodeId, ':', outputData)
+
+  const outputData = getOutputData() // Muda com selectedNodeId - mostra output do node selecionado
 
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-black/80 z-50"
         onClick={onClose}
       />
-      
+
       {/* Modal - Full Screen Style */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div 
+        <div
           className="bg-[#1a1a1a] w-full h-full max-w-[98vw] max-h-[95vh] flex flex-col rounded-lg overflow-hidden shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
@@ -821,17 +923,15 @@ export default function NodeExecutionPanel({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setViewModeInput('json')}
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${
-                      viewModeInput === 'json' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
-                    }`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${viewModeInput === 'json' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                      }`}
                   >
                     JSON
                   </button>
                   <button
                     onClick={() => setViewModeInput('table')}
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${
-                      viewModeInput === 'table' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
-                    }`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${viewModeInput === 'table' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                      }`}
                   >
                     Table
                   </button>
@@ -844,10 +944,10 @@ export default function NodeExecutionPanel({
                   </div>
                 ) : (
                   <div className="space-y-0">
-                    {/* INPUT DATA */}
+                    {/* INPUT DATA - Clean, like n8n */}
                     <div className="border-b border-gray-800">
                       <div className="px-3 py-2 bg-[#0d0d0d] border-b border-gray-800">
-                        <span className="text-[10px] font-semibold text-gray-400 uppercase">Input Data</span>
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase">Input</span>
                       </div>
                       <div className="p-3">
                         {viewModeInput === 'json' && renderJsonView(inputData, true)}
@@ -855,34 +955,23 @@ export default function NodeExecutionPanel({
                         {viewModeInput === 'schema' && renderSchemaView(inputData)}
                       </div>
                     </div>
-                    
-                    {/* VARIABLES */}
-                    {(() => {
-                      const nodeData = getCurrentNodeData()
-                      const variables = nodeData?.variables || executionData?.context?.variables || {}
-                      
-                      if (Object.keys(variables).length > 0) {
-                        return (
-                          <div>
-                            <div className="px-3 py-2 bg-[#0d0d0d] border-b border-gray-800">
-                              <span className="text-[10px] font-semibold text-green-400 uppercase">💾 Available Variables</span>
-                            </div>
-                            <div className="p-3">
-                              {renderJsonView(variables, true)}
-                            </div>
-                          </div>
-                        )
-                      }
-                      return null
-                    })()}
                   </div>
                 )}
               </div>
-              
+
               {/* Lista de nodes executados EMBAIXO do INPUT */}
               <div className="border-t border-gray-800 bg-[#0d0d0d]">
-                <div className="px-3 py-2 border-b border-gray-800">
+                <div className="px-3 py-2 border-b border-gray-800 flex items-center justify-between">
                   <span className="text-[10px] font-semibold text-gray-400 uppercase">Executed Nodes</span>
+                  {selectedNodeId !== node.id && (
+                    <button
+                      onClick={() => setSelectedNodeId(node.id)}
+                      className="text-[10px] text-primary hover:text-primary/80 font-medium transition"
+                      title="Back to current node"
+                    >
+                      ← Current
+                    </button>
+                  )}
                 </div>
                 <div className="max-h-[200px] overflow-y-auto">
                   {executedNodes.length === 0 ? (
@@ -935,7 +1024,7 @@ export default function NodeExecutionPanel({
                     <NodeConfigModal
                       node={configNode}
                       tenantId={tenantId}
-                      onClose={() => {}}
+                      onClose={() => { }}
                       onSave={async (nodeId, config) => {
                         if (onSave) {
                           await onSave(nodeId, config)
@@ -943,6 +1032,9 @@ export default function NodeExecutionPanel({
                         }
                       }}
                       embedded={true}
+                      inputData={inputData}
+                      executionData={executionData}
+                      executionLogs={executionLogs}
                     />
                   </div>
                 ) : (
@@ -961,17 +1053,15 @@ export default function NodeExecutionPanel({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setViewModeOutput('json')}
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${
-                      viewModeOutput === 'json' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
-                    }`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${viewModeOutput === 'json' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                      }`}
                   >
                     JSON
                   </button>
                   <button
                     onClick={() => setViewModeOutput('table')}
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${
-                      viewModeOutput === 'table' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
-                    }`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition ${viewModeOutput === 'table' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+                      }`}
                   >
                     Table
                   </button>
