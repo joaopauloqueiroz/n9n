@@ -7,16 +7,19 @@ class WebSocketClient {
   private socket: Socket | null = null
   private listeners: Map<string, Set<(event: WorkflowEvent) => void>> = new Map()
 
-  connect(tenantId: string) {
+  connect(tenantId: string, token?: string) {
     if (this.socket?.connected) {
       console.log('WebSocket already connected')
       return
     }
 
+    const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('n9n_token') : null)
+
     console.log('Connecting to WebSocket:', WS_URL, 'with tenantId:', tenantId)
 
     this.socket = io(WS_URL, {
       query: { tenantId },
+      auth: authToken ? { token: authToken } : undefined,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,

@@ -10,16 +10,18 @@ import NodeConfigModal from '@/components/NodeConfigModal'
 import ExecutionHistory from '@/components/ExecutionHistory'
 import NodeExecutionPanel from '@/components/NodeExecutionPanel'
 import NodesSidebar from '@/components/NodesSidebar'
+import { useAuth } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
 const WorkflowCanvas = dynamic(() => import('@/components/WorkflowCanvas'), {
   ssr: false,
 })
 
-export default function WorkflowPage() {
+function WorkflowPageContent() {
   const params = useParams()
   const router = useRouter()
   const workflowId = params.id as string
-  const tenantId = 'demo-tenant'
+  const { tenant, token } = useAuth()
 
   const [workflow, setWorkflow] = useState<any>(null)
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null)
@@ -45,8 +47,10 @@ export default function WorkflowPage() {
   const currentEdgesRef = useRef<WorkflowEdge[]>([])
 
   useEffect(() => {
-    loadWorkflow()
-    wsClient.connect(tenantId)
+    if (tenant?.id && token) {
+      loadWorkflow()
+      wsClient.connect(tenant.id, token)
+    }
 
     // Listen for execution events
     const handleExecutionStarted = (event: any) => {
@@ -165,7 +169,7 @@ export default function WorkflowPage() {
         // Load execution logs to reconstruct the full execution path
         if (event.executionId) {
           try {
-            const logs = await apiClient.getExecutionLogs(tenantId, event.executionId)
+            const logs = await apiClient.getExecutionLogs(event.executionId)
             const executedNodeIds: string[] = []
             
             // Extract node execution sequence from logs
@@ -257,7 +261,7 @@ export default function WorkflowPage() {
 
   const loadWorkflow = async () => {
     try {
-      const data = await apiClient.getWorkflow(tenantId, workflowId)
+      const data = await apiClient.getWorkflow(workflowId)
       setWorkflow(data)
 
       // Initialize refs with loaded data
@@ -277,7 +281,7 @@ export default function WorkflowPage() {
 
     try {
       setSaveStatus('saving')
-      await apiClient.updateWorkflow(tenantId, workflowId, { nodes, edges })
+      await apiClient.updateWorkflow(workflowId, { nodes, edges })
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
     } catch (error) {
@@ -345,11 +349,11 @@ export default function WorkflowPage() {
       if (triggerNode.type === WorkflowNodeType.LOOP) {
         console.log('[TEST NODE] Testing LOOP node with current context')
         // Pass currentExecutionId if available to continue from that context
-        await apiClient.testNode(tenantId, workflowId, nodeId, currentExecutionId || undefined)
+        await apiClient.testNode(workflowId, nodeId, currentExecutionId || undefined)
         console.log('[TEST NODE] Node execution started')
       } else {
         // Default behavior for manual triggers (starts fresh execution)
-        await apiClient.triggerManualExecution(tenantId, workflowId, nodeId)
+        await apiClient.triggerManualExecution(workflowId, nodeId)
         console.log('[MANUAL TRIGGER] Workflow started successfully')
       }
 
@@ -686,15 +690,23 @@ export default function WorkflowPage() {
         />
       )}
 
-      {showHistory && (
+      {showHistory && tenant && (
         <ExecutionHistory
           workflowId={workflowId}
-          tenantId={tenantId}
+          tenantId={tenant.id}
           onClose={() => setShowHistory(false)}
           onSelectExecution={handleViewHistoricalExecution}
         />
       )}
     </div>
+  )
+}
+
+export default function WorkflowPage() {
+  return (
+    <AuthGuard>
+      <WorkflowPageContent />
+    </AuthGuard>
   )
 }
 

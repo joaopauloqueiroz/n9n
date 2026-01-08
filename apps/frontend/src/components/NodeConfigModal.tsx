@@ -17,8 +17,7 @@ interface NodeConfigModalProps {
 }
 
 // Component for SET_TAGS configuration
-function SetTagsConfig({ config, setConfig, tenantId }: any) {
-  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
+function SetTagsConfig({ config, setConfig, tenantId: _tenantId }: any) {
   const [availableTags, setAvailableTags] = useState<any[]>([])
   const [loadingTags, setLoadingTags] = useState(false)
 
@@ -36,11 +35,8 @@ function SetTagsConfig({ config, setConfig, tenantId }: any) {
   const loadAvailableTags = async () => {
     try {
       setLoadingTags(true)
-      const response = await fetch(`${API_URL}/api/tags?tenantId=${tenantId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setAvailableTags(data)
-      }
+      const data = await apiClient.getTags()
+      setAvailableTags(data)
     } catch (error) {
       console.error('Error loading tags:', error)
     } finally {

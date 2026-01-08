@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
+import { useAuth } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
-export default function Home() {
+function HomeContent() {
   const [workflows, setWorkflows] = useState<any[]>([])
   const [sessions, setSessions] = useState<any[]>([])
-  const tenantId = 'demo-tenant' // In production, get from auth
+  const { tenant, logout } = useAuth()
 
   useEffect(() => {
     loadData()
@@ -16,8 +18,8 @@ export default function Home() {
   const loadData = async () => {
     try {
       const [workflowsData, sessionsData] = await Promise.all([
-        apiClient.getWorkflows(tenantId),
-        apiClient.getWhatsappSessions(tenantId),
+        apiClient.getWorkflows(),
+        apiClient.getWhatsappSessions(),
       ])
       setWorkflows(workflowsData)
       setSessions(sessionsData)
@@ -36,13 +38,24 @@ export default function Home() {
                 N9N
               </h1>
               <p className="text-gray-400">Conversation Workflow Engine</p>
+              {tenant && (
+                <p className="text-sm text-gray-500 mt-1">Tenant: {tenant.name}</p>
+              )}
             </div>
-            <Link
-              href="/tags"
-              className="px-4 py-2 bg-surface border border-border rounded hover:border-primary transition flex items-center gap-2"
-            >
-              🏷️ Gerenciar Tags
-            </Link>
+            <div className="flex gap-2">
+              <Link
+                href="/tags"
+                className="px-4 py-2 bg-surface border border-border rounded hover:border-primary transition flex items-center gap-2"
+              >
+                🏷️ Gerenciar Tags
+              </Link>
+              <button
+                onClick={logout}
+                className="px-4 py-2 bg-surface border border-border rounded hover:border-red-500 transition text-red-400"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </header>
 
@@ -148,6 +161,14 @@ export default function Home() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <AuthGuard>
+      <HomeContent />
+    </AuthGuard>
   )
 }
 

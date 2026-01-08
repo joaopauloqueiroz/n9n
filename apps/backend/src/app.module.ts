@@ -4,6 +4,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { EventBusModule } from './event-bus/event-bus.module';
+import { AuthModule } from './auth/auth.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { ExecutionModule } from './execution/execution.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
@@ -19,6 +20,7 @@ import { WorkerModule } from './worker/worker.module';
     PrismaModule,
     RedisModule,
     EventBusModule,
+    AuthModule,
     WorkflowModule,
     ExecutionModule,
     WhatsappModule,

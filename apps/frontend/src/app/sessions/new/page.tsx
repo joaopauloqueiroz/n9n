@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import { wsClient } from '@/lib/websocket'
 import { EventType } from '@n9n/shared'
+import { useAuth } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
-export default function NewSessionPage() {
+function NewSessionPageContent() {
   const router = useRouter()
-  const tenantId = 'demo-tenant'
+  const { tenant, token } = useAuth()
   
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,20 +21,20 @@ export default function NewSessionPage() {
   const [debug, setDebug] = useState<string[]>([])
 
   useEffect(() => {
-    if (sessionId) {
+    if (sessionId && tenant?.id && token) {
       const addDebug = (msg: string) => {
         setDebug(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
         console.log(msg)
       }
 
       addDebug('Connecting to WebSocket...')
-      wsClient.connect(tenantId)
+      wsClient.connect(tenant.id, token)
 
       // Poll for session status and QR code
       const pollSession = async () => {
         try {
           addDebug('Polling session status...')
-          const session = await apiClient.getWhatsappSession(tenantId, sessionId)
+          const session = await apiClient.getWhatsappSession(sessionId)
           addDebug(`Status: ${session.status}, Has QR: ${!!session.qrCode}`)
           
           setStatus(session.status)
@@ -85,7 +87,7 @@ export default function NewSessionPage() {
         wsClient.off(EventType.WHATSAPP_SESSION_CONNECTED, handleConnected)
       }
     }
-  }, [sessionId, tenantId, router])
+  }, [sessionId, tenant?.id, token, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,7 +101,7 @@ export default function NewSessionPage() {
     setError('')
 
     try {
-      const session = await apiClient.createWhatsappSession(tenantId, name)
+      const session = await apiClient.createWhatsappSession(name)
       setSessionId(session.id)
       setStatus('CONNECTING')
     } catch (err) {
@@ -265,6 +267,14 @@ export default function NewSessionPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function NewSessionPage() {
+  return (
+    <AuthGuard>
+      <NewSessionPageContent />
+    </AuthGuard>
   )
 }
 

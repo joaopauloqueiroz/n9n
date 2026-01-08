@@ -5,14 +5,14 @@ import { apiClient } from '@/lib/api-client'
 
 interface ExecutionHistoryProps {
   workflowId: string
-  tenantId: string
+  tenantId: string // Kept for backward compatibility but not used in API calls
   onClose: () => void
   onSelectExecution?: (executionId: string, logs: any[]) => void
 }
 
 export default function ExecutionHistory({
   workflowId,
-  tenantId,
+  tenantId: _tenantId, // Not used anymore, kept for compatibility
   onClose,
   onSelectExecution,
 }: ExecutionHistoryProps) {
@@ -26,7 +26,7 @@ export default function ExecutionHistory({
   const loadExecutions = async () => {
     try {
       setLoading(true)
-      const data = await apiClient.getWorkflowExecutions(tenantId, workflowId)
+      const data = await apiClient.getWorkflowExecutions(workflowId)
       setExecutions(data)
     } catch (error) {
       console.error('Error loading executions:', error)
@@ -39,7 +39,7 @@ export default function ExecutionHistory({
   const handleSelectExecution = async (execution: any) => {
     if (onSelectExecution) {
       try {
-        const executionLogs = await apiClient.getExecutionLogs(tenantId, execution.id)
+        const executionLogs = await apiClient.getExecutionLogs(execution.id)
         onSelectExecution(execution.id, executionLogs)
         onClose()
       } catch (error) {

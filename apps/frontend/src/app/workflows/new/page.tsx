@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
+import { useAuth } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
-export default function NewWorkflowPage() {
+function NewWorkflowPageContent() {
   const router = useRouter()
-  const tenantId = 'demo-tenant'
   
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -25,7 +26,7 @@ export default function NewWorkflowPage() {
     setError('')
 
     try {
-      const workflow = await apiClient.createWorkflow(tenantId, name, description)
+      const workflow = await apiClient.createWorkflow(name, description)
       router.push(`/workflows/${workflow.id}`)
     } catch (err) {
       setError('Failed to create workflow')
@@ -116,6 +117,14 @@ export default function NewWorkflowPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function NewWorkflowPage() {
+  return (
+    <AuthGuard>
+      <NewWorkflowPageContent />
+    </AuthGuard>
   )
 }
 

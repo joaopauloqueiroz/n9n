@@ -66,6 +66,16 @@ Visit:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:3001
 
+### Default Credentials
+
+After running the seed, a default user is created for the demo tenant:
+
+- **Email**: `admin@demo.com`
+- **Password**: `demo123`
+- **Tenant**: Demo Tenant (demo-tenant)
+
+You can use these credentials to login at http://localhost:3000/login
+
 ## 📚 Documentation
 
 - **[Getting Started Guide](./GETTING_STARTED.md)** - Step-by-step tutorial

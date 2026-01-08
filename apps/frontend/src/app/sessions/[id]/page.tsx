@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import QRCode from 'react-qr-code'
+import { useAuth } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
-export default function SessionDetailPage({ params }: { params: { id: string } }) {
+function SessionDetailPageContent({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const tenantId = 'demo-tenant'
+  const { token } = useAuth()
   const sessionId = params.id
   
   const [session, setSession] = useState<any>(null)
@@ -22,7 +24,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
 
   const loadSession = async () => {
     try {
-      const data = await apiClient.getWhatsappSession(tenantId, sessionId)
+      const data = await apiClient.getWhatsappSession(sessionId)
       setSession(data)
     } catch (error) {
       console.error('Error loading session:', error)
@@ -37,7 +39,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
     }
 
     try {
-      await apiClient.deleteWhatsappSession(tenantId, sessionId)
+      await apiClient.deleteWhatsappSession(sessionId)
       router.push('/sessions')
     } catch (error) {
       console.error('Error deleting session:', error)
@@ -47,7 +49,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
 
   const handleReconnect = async () => {
     try {
-      await apiClient.reconnectWhatsappSession(tenantId, sessionId)
+      await apiClient.reconnectWhatsappSession(sessionId)
       await loadSession()
     } catch (error) {
       console.error('Error reconnecting session:', error)
@@ -220,6 +222,14 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SessionDetailPage({ params }: { params: { id: string } }) {
+  return (
+    <AuthGuard>
+      <SessionDetailPageContent params={params} />
+    </AuthGuard>
   )
 }
 

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import * as bcrypt from 'bcrypt'
 
 const prisma = new PrismaClient()
 
@@ -16,6 +17,34 @@ async function main() {
   })
 
   console.log('Created demo tenant:', tenant)
+
+  // Create default user for demo tenant
+  const defaultPassword = await bcrypt.hash('demo123', 10)
+  const defaultUser = await prisma.user.upsert({
+    where: {
+      tenantId_email: {
+        tenantId: tenant.id,
+        email: 'admin@demo.com',
+      },
+    },
+    update: {
+      password: defaultPassword,
+      isActive: true,
+    },
+    create: {
+      email: 'admin@demo.com',
+      password: defaultPassword,
+      name: 'Demo Admin',
+      tenantId: tenant.id,
+      isActive: true,
+    },
+  })
+
+  console.log('Created default user:', {
+    email: defaultUser.email,
+    tenantId: defaultUser.tenantId,
+    password: 'demo123', // Only for initial setup
+  })
 
   // Create sample workflow
   const workflow = await prisma.workflow.create({

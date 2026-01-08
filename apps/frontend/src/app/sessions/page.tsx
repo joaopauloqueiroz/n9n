@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
+import { useAuth } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
-export default function SessionsPage() {
+function SessionsPageContent() {
   const router = useRouter()
-  const tenantId = 'demo-tenant'
+  const { token } = useAuth()
   
   const [sessions, setSessions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -20,7 +22,7 @@ export default function SessionsPage() {
 
   const loadSessions = async () => {
     try {
-      const data = await apiClient.getWhatsappSessions(tenantId)
+      const data = await apiClient.getWhatsappSessions()
       setSessions(data)
     } catch (error) {
       console.error('Error loading sessions:', error)
@@ -35,7 +37,7 @@ export default function SessionsPage() {
     }
 
     try {
-      await apiClient.deleteWhatsappSession(tenantId, sessionId)
+      await apiClient.deleteWhatsappSession(sessionId)
       await loadSessions()
     } catch (error) {
       console.error('Error deleting session:', error)
@@ -45,7 +47,7 @@ export default function SessionsPage() {
 
   const handleReconnect = async (sessionId: string) => {
     try {
-      await apiClient.reconnectWhatsappSession(tenantId, sessionId)
+      await apiClient.reconnectWhatsappSession(sessionId)
       await loadSessions()
     } catch (error) {
       console.error('Error reconnecting session:', error)
@@ -204,6 +206,14 @@ export default function SessionsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SessionsPage() {
+  return (
+    <AuthGuard>
+      <SessionsPageContent />
+    </AuthGuard>
   )
 }
 

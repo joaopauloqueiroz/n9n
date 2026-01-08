@@ -17,6 +17,8 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { WhatsappSessionManager } from '../whatsapp/whatsapp-session-manager.service';
 import { ExecutionService } from '../execution/execution.service';
 import { EventBusService } from '../event-bus/event-bus.service';
+import { Tenant } from '../auth/decorators/tenant.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 
 @Controller('api')
 export class WorkflowController {
@@ -31,6 +33,7 @@ export class WorkflowController {
 
   // Health check
   @Get('health')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async healthCheck() {
     return {
@@ -43,25 +46,26 @@ export class WorkflowController {
   // Workflows
 
   @Get('workflows')
-  async getWorkflows(@Query('tenantId') tenantId: string) {
+  async getWorkflows(@Tenant() tenantId: string) {
     return this.workflowService.getWorkflows(tenantId);
   }
 
   @Get('workflows/:id')
-  async getWorkflow(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async getWorkflow(@Tenant() tenantId: string, @Param('id') id: string) {
     return this.workflowService.getWorkflow(tenantId, id);
   }
 
   @Post('workflows')
   async createWorkflow(
-    @Body() body: { tenantId: string; name: string; description?: string },
+    @Tenant() tenantId: string,
+    @Body() body: { name: string; description?: string },
   ) {
-    return this.workflowService.createWorkflow(body.tenantId, body.name, body.description);
+    return this.workflowService.createWorkflow(tenantId, body.name, body.description);
   }
 
   @Put('workflows/:id')
   async updateWorkflow(
-    @Query('tenantId') tenantId: string,
+    @Tenant() tenantId: string,
     @Param('id') id: string,
     @Body() body: any,
   ) {
@@ -70,17 +74,18 @@ export class WorkflowController {
 
   @Delete('workflows/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteWorkflow(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async deleteWorkflow(@Tenant() tenantId: string, @Param('id') id: string) {
     await this.workflowService.deleteWorkflow(tenantId, id);
   }
 
   @Post('workflows/:id/trigger-manual')
   async triggerManualExecution(
+    @Tenant() tenantId: string,
     @Param('id') workflowId: string,
-    @Body() body: { tenantId: string; nodeId: string },
+    @Body() body: { nodeId: string },
   ) {
     return this.workflowService.triggerManualExecution(
-      body.tenantId,
+      tenantId,
       workflowId,
       body.nodeId,
     );
@@ -88,11 +93,12 @@ export class WorkflowController {
 
   @Post('workflows/:id/test-node')
   async testNodeFromContext(
+    @Tenant() tenantId: string,
     @Param('id') workflowId: string,
-    @Body() body: { tenantId: string; nodeId: string; executionId?: string; nodeConfig?: any },
+    @Body() body: { nodeId: string; executionId?: string; nodeConfig?: any },
   ) {
     return this.workflowService.testNodeFromContext(
-      body.tenantId,
+      tenantId,
       workflowId,
       body.nodeId,
       body.executionId,
@@ -103,7 +109,7 @@ export class WorkflowController {
   // WhatsApp Sessions
 
   @Get('whatsapp/sessions')
-  async getSessions(@Query('tenantId') tenantId: string) {
+  async getSessions(@Tenant() tenantId: string) {
     const sessions = await this.whatsappService.getSessions(tenantId);
 
     // Update real-time status for each session
@@ -131,7 +137,7 @@ export class WorkflowController {
   }
 
   @Get('whatsapp/sessions/:id')
-  async getSession(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async getSession(@Tenant() tenantId: string, @Param('id') id: string) {
     const session = await this.whatsappService.getSession(tenantId, id);
 
     if (!session) {
@@ -157,17 +163,17 @@ export class WorkflowController {
   }
 
   @Post('whatsapp/sessions')
-  async createSession(@Body() body: { tenantId: string; name: string }) {
-    const session = await this.whatsappService.createSession(body.tenantId, body.name);
+  async createSession(@Tenant() tenantId: string, @Body() body: { name: string }) {
+    const session = await this.whatsappService.createSession(tenantId, body.name);
 
     // Initialize WhatsApp client
-    await this.whatsappSessionManager.initializeSession(body.tenantId, session.id);
+    await this.whatsappSessionManager.initializeSession(tenantId, session.id);
 
     return session;
   }
 
   @Post('whatsapp/sessions/:id/reconnect')
-  async reconnectSession(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async reconnectSession(@Tenant() tenantId: string, @Param('id') id: string) {
     const session = await this.whatsappService.getSession(tenantId, id);
 
     if (!session) {
@@ -185,7 +191,7 @@ export class WorkflowController {
 
   @Delete('whatsapp/sessions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteSession(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async deleteSession(@Tenant() tenantId: string, @Param('id') id: string) {
     await this.whatsappSessionManager.disconnectSession(id);
     await this.whatsappService.deleteSession(tenantId, id);
   }
@@ -214,7 +220,7 @@ export class WorkflowController {
 
   @Get('workflows/:workflowId/executions')
   async getWorkflowExecutions(
-    @Query('tenantId') tenantId: string,
+    @Tenant() tenantId: string,
     @Param('workflowId') workflowId: string,
   ) {
     const executions = await this.executionService.getWorkflowExecutions(tenantId, workflowId);
@@ -222,13 +228,13 @@ export class WorkflowController {
   }
 
   @Get('executions')
-  async getExecutions(@Query('tenantId') tenantId: string) {
+  async getExecutions(@Tenant() tenantId: string) {
     // This would need pagination in production
     return { message: 'Use specific execution endpoints' };
   }
 
   @Get('executions/:id')
-  async getExecution(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async getExecution(@Tenant() tenantId: string, @Param('id') id: string) {
     const execution = await this.executionService.getExecution(tenantId, id);
     if (!execution) {
       throw new NotFoundException('Execution not found');
@@ -237,7 +243,7 @@ export class WorkflowController {
   }
 
   @Get('executions/:id/logs')
-  async getExecutionLogs(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async getExecutionLogs(@Tenant() tenantId: string, @Param('id') id: string) {
     const logs = await this.eventBus.getExecutionLogs(tenantId, id);
     return logs;
   }
@@ -245,23 +251,23 @@ export class WorkflowController {
   // ==================== TAG ENDPOINTS ====================
 
   @Get('tags')
-  async getTags(@Query('tenantId') tenantId: string) {
+  async getTags(@Tenant() tenantId: string) {
     return this.tagService.getTags(tenantId);
   }
 
   @Get('tags/:id')
-  async getTag(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async getTag(@Tenant() tenantId: string, @Param('id') id: string) {
     return this.tagService.getTag(tenantId, id);
   }
 
   @Post('tags')
-  async createTag(@Query('tenantId') tenantId: string, @Body() data: CreateTagDto) {
+  async createTag(@Tenant() tenantId: string, @Body() data: CreateTagDto) {
     return this.tagService.createTag(tenantId, data);
   }
 
   @Put('tags/:id')
   async updateTag(
-    @Query('tenantId') tenantId: string,
+    @Tenant() tenantId: string,
     @Param('id') id: string,
     @Body() data: UpdateTagDto,
   ) {
@@ -269,12 +275,12 @@ export class WorkflowController {
   }
 
   @Delete('tags/:id')
-  async deleteTag(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async deleteTag(@Tenant() tenantId: string, @Param('id') id: string) {
     return this.tagService.deleteTag(tenantId, id);
   }
 
   @Get('tags/:id/usage')
-  async getTagUsage(@Query('tenantId') tenantId: string, @Param('id') id: string) {
+  async getTagUsage(@Tenant() tenantId: string, @Param('id') id: string) {
     const tag = await this.tagService.getTag(tenantId, id);
     if (!tag) {
       return { count: 0 };

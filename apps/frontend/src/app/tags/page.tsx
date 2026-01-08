@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Edit2, Tag as TagIcon } from 'lucide-react'
+import { apiClient } from '@/lib/api-client'
+import { useAuth } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
 interface Tag {
   id: string
@@ -12,7 +15,7 @@ interface Tag {
   updatedAt: string
 }
 
-export default function TagsPage() {
+function TagsPageContent() {
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -23,9 +26,6 @@ export default function TagsPage() {
     description: '',
   })
 
-  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
-  const tenantId = 'demo-tenant'
-
   useEffect(() => {
     loadTags()
   }, [])
@@ -33,11 +33,8 @@ export default function TagsPage() {
   const loadTags = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`${API_URL}/api/tags?tenantId=${tenantId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setTags(data)
-      }
+      const data = await apiClient.getTags()
+      setTags(data)
     } catch (error) {
       console.error('Error loading tags:', error)
     } finally {
@@ -47,23 +44,12 @@ export default function TagsPage() {
 
   const handleCreate = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/tags?tenantId=${tenantId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      })
-
-      if (response.ok) {
-        await loadTags()
-        setShowModal(false)
-        setFormData({ name: '', color: '#8b5cf6', description: '' })
-      } else {
-        const error = await response.json()
-        alert(error.message || 'Erro ao criar tag')
-      }
-    } catch (error) {
-      console.error('Error creating tag:', error)
-      alert('Erro ao criar tag')
+      await apiClient.createTag(formData.name, formData.color, formData.description)
+      await loadTags()
+      setShowModal(false)
+      setFormData({ name: '', color: '#8b5cf6', description: '' })
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Erro ao criar tag')
     }
   }
 
@@ -71,24 +57,17 @@ export default function TagsPage() {
     if (!editingTag) return
 
     try {
-      const response = await fetch(`${API_URL}/api/tags/${editingTag.id}?tenantId=${tenantId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+      await apiClient.updateTag(editingTag.id, {
+        name: formData.name,
+        color: formData.color,
+        description: formData.description,
       })
-
-      if (response.ok) {
-        await loadTags()
-        setShowModal(false)
-        setEditingTag(null)
-        setFormData({ name: '', color: '#8b5cf6', description: '' })
-      } else {
-        const error = await response.json()
-        alert(error.message || 'Erro ao atualizar tag')
-      }
-    } catch (error) {
-      console.error('Error updating tag:', error)
-      alert('Erro ao atualizar tag')
+      await loadTags()
+      setShowModal(false)
+      setEditingTag(null)
+      setFormData({ name: '', color: '#8b5cf6', description: '' })
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Erro ao atualizar tag')
     }
   }
 
@@ -96,19 +75,10 @@ export default function TagsPage() {
     if (!confirm('Tem certeza que deseja deletar esta tag?')) return
 
     try {
-      const response = await fetch(`${API_URL}/api/tags/${id}?tenantId=${tenantId}`, {
-        method: 'DELETE',
-      })
-
-      if (response.ok) {
-        await loadTags()
-      } else {
-        const error = await response.json()
-        alert(error.message || 'Erro ao deletar tag')
-      }
-    } catch (error) {
-      console.error('Error deleting tag:', error)
-      alert('Erro ao deletar tag')
+      await apiClient.deleteTag(id)
+      await loadTags()
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Erro ao deletar tag')
     }
   }
 
@@ -284,6 +254,14 @@ export default function TagsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function TagsPage() {
+  return (
+    <AuthGuard>
+      <TagsPageContent />
+    </AuthGuard>
   )
 }
 
