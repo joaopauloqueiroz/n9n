@@ -23,21 +23,28 @@ model Tenant {
   @@map("tenants")
 }
 
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+}
+
 model User {
-  id        String   @id @default(uuid())
-  tenantId  String
-  email     String
-  password  String
-  name      String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String
+  password     String
+  name         String?
+  isActive     Boolean  @default(true)
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([email])
+  @@index([role])
   @@map("users")
 }
 

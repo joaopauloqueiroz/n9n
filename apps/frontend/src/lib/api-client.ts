@@ -65,43 +65,51 @@ export const apiClient = {
   },
 
   // Workflows
-  getWorkflows: async () => {
-    const { data } = await client.get('/api/workflows')
+  getWorkflows: async (tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.get('/api/workflows', { params })
     return data
   },
 
-  getWorkflow: async (workflowId: string) => {
-    const { data } = await client.get(`/api/workflows/${workflowId}`)
+  getWorkflow: async (workflowId: string, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.get(`/api/workflows/${workflowId}`, { params })
     return data
   },
 
-  createWorkflow: async (name: string, description?: string) => {
-    const { data } = await client.post('/api/workflows', { name, description })
+  createWorkflow: async (name: string, description?: string, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.post('/api/workflows', { name, description }, { params })
     return data
   },
 
-  updateWorkflow: async (workflowId: string, updates: any) => {
-    const { data } = await client.put(`/api/workflows/${workflowId}`, updates)
+  updateWorkflow: async (workflowId: string, updates: any, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.put(`/api/workflows/${workflowId}`, updates, { params })
     return data
   },
 
-  deleteWorkflow: async (workflowId: string) => {
-    await client.delete(`/api/workflows/${workflowId}`)
+  deleteWorkflow: async (workflowId: string, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    await client.delete(`/api/workflows/${workflowId}`, { params })
   },
 
   // WhatsApp Sessions
-  getWhatsappSessions: async () => {
-    const { data } = await client.get('/api/whatsapp/sessions')
+  getWhatsappSessions: async (tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.get('/api/whatsapp/sessions', { params })
     return data
   },
 
-  getWhatsappSession: async (sessionId: string) => {
-    const { data } = await client.get(`/api/whatsapp/sessions/${sessionId}`)
+  getWhatsappSession: async (sessionId: string, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.get(`/api/whatsapp/sessions/${sessionId}`, { params })
     return data
   },
 
-  createWhatsappSession: async (name: string) => {
-    const { data } = await client.post('/api/whatsapp/sessions', { name })
+  createWhatsappSession: async (name: string, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.post('/api/whatsapp/sessions', { name }, { params })
     return data
   },
 
@@ -182,5 +190,61 @@ export const apiClient = {
 
   deleteTag: async (tagId: string) => {
     await client.delete(`/api/tags/${tagId}`)
+  },
+
+  // Admin - Tenants (SUPERADMIN only)
+  getTenants: async () => {
+    const { data } = await client.get('/api/admin/tenants')
+    return data
+  },
+
+  getTenant: async (tenantId: string) => {
+    const { data } = await client.get(`/api/admin/tenants/${tenantId}`)
+    return data
+  },
+
+  createTenant: async (name: string, email: string) => {
+    const { data } = await client.post('/api/admin/tenants', { name, email })
+    return data
+  },
+
+  updateTenant: async (tenantId: string, updates: { name?: string; email?: string; isActive?: boolean }) => {
+    const { data } = await client.put(`/api/admin/tenants/${tenantId}`, updates)
+    return data
+  },
+
+  deleteTenant: async (tenantId: string) => {
+    await client.delete(`/api/admin/tenants/${tenantId}`)
+  },
+
+  // Admin - Users
+  getUsers: async () => {
+    const { data } = await client.get('/api/admin/users')
+    return data
+  },
+
+  getUser: async (userId: string) => {
+    const { data } = await client.get(`/api/admin/users/${userId}`)
+    return data
+  },
+
+  createUser: async (email: string, password: string, name: string, tenantId: string, role?: string) => {
+    const { data } = await client.post('/api/admin/users', {
+      email,
+      password,
+      name,
+      tenantId,
+      role,
+    })
+    return data
+  },
+
+  updateUser: async (userId: string, updates: { email?: string; password?: string; name?: string; isActive?: boolean; role?: string }) => {
+    const { data } = await client.put(`/api/admin/users/${userId}`, updates)
+    return data
+  },
+
+  deleteUser: async (userId: string) => {
+    await client.delete(`/api/admin/users/${userId}`)
   },
 }

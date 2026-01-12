@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ExecutionContext } from '@n9n/shared';
-import { zonedTimeToUtc, utcToZonedTime } from 'date-fns-tz';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 
 @Injectable()
 export class ContextService {
@@ -50,7 +50,7 @@ export class ContextService {
       // Use São Paulo timezone (America/Sao_Paulo)
       const timezone = 'America/Sao_Paulo';
       const now = new Date();
-      const nowInSaoPaulo = utcToZonedTime(now, timezone);
+      const nowInSaoPaulo = toZonedTime(now, timezone);
       const currentDay = nowInSaoPaulo.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
       const currentHour = nowInSaoPaulo.getHours();
       const currentMinute = nowInSaoPaulo.getMinutes();

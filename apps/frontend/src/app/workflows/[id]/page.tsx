@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { apiClient } from '@/lib/api-client'
 import { wsClient } from '@/lib/websocket'
@@ -12,6 +12,7 @@ import NodeExecutionPanel from '@/components/NodeExecutionPanel'
 import NodesSidebar from '@/components/NodesSidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { AuthGuard } from '@/components/AuthGuard'
+import AppHeader from '@/components/AppHeader'
 
 const WorkflowCanvas = dynamic(() => import('@/components/WorkflowCanvas'), {
   ssr: false,
@@ -20,13 +21,19 @@ const WorkflowCanvas = dynamic(() => import('@/components/WorkflowCanvas'), {
 function WorkflowPageContent() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const workflowId = params.id as string
   const { tenant, token } = useAuth()
+  
+  // Get tenantId from URL query param (for SUPERADMIN viewing other workspaces) or from auth context
+  const tenantIdFromUrl = searchParams?.get('tenantId')
+  const tenantId = tenantIdFromUrl || tenant?.id
 
   const [workflow, setWorkflow] = useState<any>(null)
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null)
   const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'waiting' | 'completed' | 'failed'>('idle')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null)
@@ -47,9 +54,10 @@ function WorkflowPageContent() {
   const currentEdgesRef = useRef<WorkflowEdge[]>([])
 
   useEffect(() => {
-    if (tenant?.id && token) {
+    if (tenantId && token) {
       loadWorkflow()
-      wsClient.connect(tenant.id, token)
+      // Connect websocket with the actual tenantId being used
+      wsClient.connect(tenantId, token)
     }
 
     // Listen for execution events
@@ -257,18 +265,25 @@ function WorkflowPageContent() {
       wsClient.off(EventType.EXECUTION_COMPLETED, handleExecutionCompleted)
       wsClient.off(EventType.EXECUTION_ERROR, handleExecutionError)
     }
-  }, [workflowId, tenantId])
+  }, [workflowId, tenantId, token])
 
   const loadWorkflow = async () => {
     try {
-      const data = await apiClient.getWorkflow(workflowId)
+      setError(null)
+      // Pass tenantId if available (for SUPERADMIN viewing other workspaces)
+      const data = await apiClient.getWorkflow(workflowId, tenantId || undefined)
       setWorkflow(data)
 
       // Initialize refs with loaded data
       currentNodesRef.current = data.nodes || []
       currentEdgesRef.current = data.edges || []
-    } catch (error) {
-      console.error('Error loading workflow:', error)
+    } catch (err: any) {
+      console.error('Error loading workflow:', err)
+      if (err.response?.status === 404) {
+        setError('Workflow not found')
+      } else {
+        setError(err.response?.data?.message || 'Failed to load workflow')
+      }
     } finally {
       setLoading(false)
     }
@@ -281,7 +296,8 @@ function WorkflowPageContent() {
 
     try {
       setSaveStatus('saving')
-      await apiClient.updateWorkflow(workflowId, { nodes, edges })
+      // Pass tenantId if available (for SUPERADMIN viewing other workspaces)
+      await apiClient.updateWorkflow(workflowId, { nodes, edges }, tenantId || undefined)
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
     } catch (error) {
@@ -318,7 +334,8 @@ function WorkflowPageContent() {
         node.id === nodeId ? { ...node, config } : node
       )
 
-      await apiClient.updateWorkflow(tenantId, workflowId, { nodes: updatedNodes, edges: currentEdges })
+      // Pass tenantId if available (for SUPERADMIN viewing other workspaces)
+      await apiClient.updateWorkflow(workflowId, { nodes: updatedNodes, edges: currentEdges }, tenantId || undefined)
 
       // Update refs
       currentNodesRef.current = updatedNodes
@@ -396,10 +413,15 @@ function WorkflowPageContent() {
       setSaveStatus('saving')
       console.log('[DEBUG] Calling API to update workflow...')
 
-      const result = await apiClient.updateWorkflow(tenantId, workflowId, {
-        nodes: updatedNodes,
-        edges: currentEdges // Use current edges from ref
-      })
+      // Pass tenantId if available (for SUPERADMIN viewing other workspaces)
+      const result = await apiClient.updateWorkflow(
+        workflowId,
+        {
+          nodes: updatedNodes,
+          edges: currentEdges // Use current edges from ref
+        },
+        tenantId || undefined
+      )
 
       console.log('[DEBUG] API response:', result)
 
@@ -493,9 +515,14 @@ function WorkflowPageContent() {
 
   const toggleActive = async () => {
     try {
-      const updated = await apiClient.updateWorkflow(tenantId, workflowId, {
-        isActive: !workflow.isActive,
-      })
+      // Pass tenantId if available (for SUPERADMIN viewing other workspaces)
+      const updated = await apiClient.updateWorkflow(
+        workflowId,
+        {
+          isActive: !workflow.isActive,
+        },
+        tenantId || undefined
+      )
       setWorkflow(updated)
     } catch (error) {
       console.error('Error toggling workflow:', error)
@@ -504,27 +531,54 @@ function WorkflowPageContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading workflow...</p>
+        </div>
       </div>
     )
   }
 
-  if (!workflow) {
+  if (error || !workflow) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Workflow not found</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4 text-red-400">Workflow not found</h1>
+          <p className="text-gray-400 mb-4">{error || 'The workflow you are looking for does not exist or you do not have permission to access it.'}</p>
+          <button
+            onClick={() => {
+              // If came from workspace, go back to workspace, otherwise go to home
+              if (tenantIdFromUrl) {
+                router.push(`/workspaces/${tenantIdFromUrl}?tab=workflows`)
+              } else {
+                router.push('/')
+              }
+            }}
+            className="px-4 py-2 bg-primary text-black rounded hover:bg-primary/80 transition"
+          >
+            {tenantIdFromUrl ? 'Back to Workspace' : 'Go Home'}
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="h-screen flex flex-col">
+      <AppHeader />
       {/* Header */}
       <div className="bg-surface border-b border-border p-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => router.push('/')}
+            onClick={() => {
+              // If came from workspace, go back to workspace, otherwise go to home
+              if (tenantIdFromUrl) {
+                router.push(`/workspaces/${tenantIdFromUrl}?tab=workflows`)
+              } else {
+                router.push('/')
+              }
+            }}
             className="px-4 py-2 bg-surface border border-border rounded hover:border-primary transition"
           >
             ← Back
@@ -671,7 +725,7 @@ function WorkflowPageContent() {
       </div>
 
       {/* Modals & Panels */}
-      {selectedNode && (
+      {selectedNode && tenantId && (
         <NodeConfigModal
           node={selectedNode}
           tenantId={tenantId}
@@ -680,7 +734,7 @@ function WorkflowPageContent() {
         />
       )}
 
-      {inspectedNode && (
+      {inspectedNode && tenantId && (
         <NodeExecutionPanel
           node={inspectedNode}
           executionId={isViewingHistory ? historicalExecutionId : currentExecutionId}
@@ -690,10 +744,10 @@ function WorkflowPageContent() {
         />
       )}
 
-      {showHistory && tenant && (
+      {showHistory && tenantId && (
         <ExecutionHistory
           workflowId={workflowId}
-          tenantId={tenant.id}
+          tenantId={tenantId}
           onClose={() => setShowHistory(false)}
           onSelectExecution={handleViewHistoricalExecution}
         />

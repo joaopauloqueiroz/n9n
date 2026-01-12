@@ -38,6 +38,7 @@ export class ExecutionEngineService {
     sessionId: string,
     contactId: string,
     triggerMessage?: string,
+    triggerPayload?: any, // TriggerMessagePayload
   ): Promise<WorkflowExecution> {
     // Acquire lock to prevent duplicate executions
     const lockKey = `execution:lock:${tenantId}:${sessionId}:${contactId}`;
@@ -94,7 +95,7 @@ export class ExecutionEngineService {
         sessionId,
         contactId,
       );
-      // Create execution
+      // Create execution with normalized payload
       const execution = await this.executionService.createExecution(
         tenantId,
         workflowId,
@@ -103,6 +104,14 @@ export class ExecutionEngineService {
         {
           variables: {
             triggerMessage: triggerMessage || '',
+            triggerPayload: triggerPayload || {
+              messageId: `text-${Date.now()}`,
+              from: contactId,
+              type: 'text',
+              text: triggerMessage || '',
+              media: null,
+              timestamp: Date.now(),
+            },
             contactTags, // Make tags available in all nodes
           },
         },
@@ -143,6 +152,7 @@ export class ExecutionEngineService {
   async resumeExecution(
     execution: WorkflowExecution,
     message: string,
+    triggerPayload?: any, // TriggerMessagePayload
   ): Promise<void> {
     // Acquire lock
     const lockKey = `execution:lock:${execution.tenantId}:${execution.sessionId}:${execution.contactId}`;
@@ -185,6 +195,12 @@ export class ExecutionEngineService {
         nodes: workflowData.nodes as any,
         edges: workflowData.edges as any,
       };
+
+      // Update context with new message and payload
+      if (triggerPayload) {
+        execution.context.variables.triggerPayload = triggerPayload;
+      }
+      execution.context.variables.triggerMessage = message;
 
       // Get current node
       const currentNode = workflow.nodes.find((n) => n.id === execution.currentNodeId);

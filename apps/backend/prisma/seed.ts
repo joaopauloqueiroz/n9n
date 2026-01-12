@@ -4,6 +4,51 @@ import * as bcrypt from 'bcrypt'
 const prisma = new PrismaClient()
 
 async function main() {
+  // Create superadmin tenant
+  const superAdminTenant = await prisma.tenant.upsert({
+    where: { email: 'superadmin@n9n.com' },
+    update: {},
+    create: {
+      id: 'superadmin-tenant',
+      name: 'Super Admin Tenant',
+      email: 'superadmin@n9n.com',
+      isActive: true,
+    },
+  })
+
+  console.log('Created superadmin tenant:', superAdminTenant)
+
+  // Create superadmin user
+  const superAdminPassword = await bcrypt.hash('superadmin123', 10)
+  const superAdminUser = await prisma.user.upsert({
+    where: {
+      tenantId_email: {
+        tenantId: superAdminTenant.id,
+        email: 'superadmin@n9n.com',
+      },
+    },
+    update: {
+      password: superAdminPassword,
+      isActive: true,
+      role: 'SUPERADMIN',
+    } as any,
+    create: {
+      email: 'superadmin@n9n.com',
+      password: superAdminPassword,
+      name: 'Super Admin',
+      tenantId: superAdminTenant.id,
+      isActive: true,
+      role: 'SUPERADMIN',
+    } as any,
+  })
+
+  console.log('Created superadmin user:', {
+    email: superAdminUser.email,
+    tenantId: superAdminUser.tenantId,
+    role: (superAdminUser as any).role,
+    password: 'superadmin123', // Only for initial setup
+  })
+
   // Create demo tenant
   const tenant = await prisma.tenant.upsert({
     where: { email: 'demo@n9n.com' },
@@ -30,14 +75,16 @@ async function main() {
     update: {
       password: defaultPassword,
       isActive: true,
-    },
+      role: 'ADMIN',
+    } as any,
     create: {
       email: 'admin@demo.com',
       password: defaultPassword,
       name: 'Demo Admin',
       tenantId: tenant.id,
       isActive: true,
-    },
+      role: 'ADMIN',
+    } as any,
   })
 
   console.log('Created default user:', {

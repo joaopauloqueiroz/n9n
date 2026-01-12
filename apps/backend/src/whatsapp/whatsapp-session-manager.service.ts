@@ -1,11 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Client, LocalAuth } from 'whatsapp-web.js';
-import { WhatsappSessionStatus, EventType } from '@n9n/shared';
+import { Client, LocalAuth, Message } from 'whatsapp-web.js';
+import { WhatsappSessionStatus, EventType, TriggerMessagePayload } from '@n9n/shared';
 import { WhatsappService } from './whatsapp.service';
 import { EventBusService } from '../event-bus/event-bus.service';
 import { WhatsappMessageHandler } from './whatsapp-message-handler.service';
 import { WhatsappSenderService } from '../execution/whatsapp-sender.service';
+import { StorageService } from '../storage/storage.service';
 
 interface SessionClient {
   client: Client;
@@ -24,6 +25,7 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
     private eventBus: EventBusService,
     private messageHandler: WhatsappMessageHandler,
     private whatsappSender: WhatsappSenderService,
+    private storageService: StorageService,
   ) {}
 
   onModuleInit() {
@@ -684,11 +686,11 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
       }
     });
 
-    client.on('message', async (msg) => {
+    client.on('message', async (msg: Message) => {
       // Only process incoming messages (not sent by us)
       if (!msg.fromMe) {
         const contactId = msg.from;
-        let message = msg.body;
+        const messageId = msg.id._serialized;
 
         // Check if it's a poll response
         if (msg.type === 'poll_creation') {
@@ -696,24 +698,41 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
-        console.log(`Message received on session ${sessionId} from ${contactId}: ${message}`);
-
-        await this.eventBus.emit({
-          type: EventType.WHATSAPP_MESSAGE_RECEIVED,
-          tenantId,
-          sessionId,
-          contactId,
-          message,
-          timestamp: new Date(),
-        });
-
-        // Handle message
-        console.log('[SESSION_MANAGER] Calling handleMessage with:', { tenantId, sessionId, contactId, message });
         try {
-          await this.messageHandler.handleMessage(tenantId, sessionId, contactId, message);
-          console.log('[SESSION_MANAGER] handleMessage completed successfully');
+          // Process message (text or media)
+          const payload = await this.processMessage(msg, tenantId);
+
+          console.log(`Message received on session ${sessionId} from ${contactId}:`, payload.type);
+
+          await this.eventBus.emit({
+            type: EventType.WHATSAPP_MESSAGE_RECEIVED,
+            tenantId,
+            sessionId,
+            contactId,
+            message: payload.text || '',
+            timestamp: new Date(),
+          });
+
+          // Handle message with normalized payload
+          console.log('[SESSION_MANAGER] Calling handleMessage with payload:', payload);
+          try {
+            await this.messageHandler.handleMessage(tenantId, sessionId, contactId, payload);
+            console.log('[SESSION_MANAGER] handleMessage completed successfully');
+          } catch (error) {
+            console.error('[SESSION_MANAGER] Error in handleMessage:', error);
+          }
         } catch (error) {
-          console.error('[SESSION_MANAGER] Error in handleMessage:', error);
+          console.error('[SESSION_MANAGER] Error processing message:', error);
+          // Fallback to text-only handling
+          const message = msg.body || '';
+          await this.messageHandler.handleMessage(tenantId, sessionId, contactId, {
+            messageId,
+            from: contactId,
+            type: 'text',
+            text: message,
+            media: null,
+            timestamp: Date.now(),
+          });
         }
       }
     });
@@ -728,6 +747,135 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
         status: WhatsappSessionStatus.ERROR,
       });
     });
+  }
+
+  /**
+   * Process WhatsApp message and return normalized payload
+   */
+  private async processMessage(msg: Message, tenantId: string): Promise<TriggerMessagePayload> {
+    const messageId = msg.id._serialized;
+    const contactId = msg.from;
+    const timestamp = Date.now();
+
+    // Check if message has media
+    const hasMedia = msg.hasMedia;
+    const mediaType = msg.type;
+
+    if (hasMedia && this.isMediaType(mediaType)) {
+      try {
+        // Download media
+        const media = await msg.downloadMedia();
+        if (!media) {
+          throw new Error('Failed to download media');
+        }
+
+        // Convert base64 to buffer
+        const buffer = Buffer.from(media.data, 'base64');
+        const mimeType = media.mimetype || this.getMimeTypeFromWhatsAppType(mediaType);
+        // Access filename and caption safely (they may not exist on all message types)
+        const fileName = (msg as any).filename || ((msg as any).hasFileName ? (msg as any).fileName : null);
+        const caption = msg.body || null; // Caption is usually in the body for media messages
+
+        // Upload to MinIO
+        const uploadResult = await this.storageService.uploadMedia(
+          buffer,
+          mimeType,
+          fileName || undefined,
+        );
+
+        return {
+          messageId,
+          from: contactId,
+          type: 'media',
+          text: caption,
+          media: {
+            mediaType: this.mapWhatsAppTypeToMediaType(mediaType),
+            mimeType,
+            fileName,
+            size: uploadResult.size,
+            url: uploadResult.url,
+          },
+          timestamp,
+        };
+      } catch (error) {
+        console.error('[SESSION_MANAGER] Error processing media:', error);
+        // Fallback to text with error info
+        return {
+          messageId,
+          from: contactId,
+          type: 'text',
+          text: msg.body || `[Media processing failed: ${error.message}]`,
+          media: null,
+          timestamp,
+        };
+      }
+    } else {
+      // Text message
+      return {
+        messageId,
+        from: contactId,
+        type: 'text',
+        text: msg.body || null,
+        media: null,
+        timestamp,
+      };
+    }
+  }
+
+  /**
+   * Check if WhatsApp message type is a media type
+   */
+  private isMediaType(type: string): boolean {
+    return [
+      'image',
+      'video',
+      'audio',
+      'ptt', // voice message
+      'document',
+      'sticker',
+    ].includes(type);
+  }
+
+  /**
+   * Map WhatsApp message type to our media type
+   */
+  private mapWhatsAppTypeToMediaType(whatsappType: string): 'image' | 'video' | 'audio' | 'document' {
+    switch (whatsappType) {
+      case 'image':
+      case 'sticker':
+        return 'image';
+      case 'video':
+        return 'video';
+      case 'audio':
+      case 'ptt':
+        return 'audio';
+      case 'document':
+        return 'document';
+      default:
+        return 'document';
+    }
+  }
+
+  /**
+   * Get MIME type from WhatsApp message type
+   */
+  private getMimeTypeFromWhatsAppType(type: string): string {
+    switch (type) {
+      case 'image':
+        return 'image/jpeg';
+      case 'video':
+        return 'video/mp4';
+      case 'audio':
+        return 'audio/mpeg';
+      case 'ptt':
+        return 'audio/ogg';
+      case 'document':
+        return 'application/octet-stream';
+      case 'sticker':
+        return 'image/webp';
+      default:
+        return 'application/octet-stream';
+    }
   }
 }
 

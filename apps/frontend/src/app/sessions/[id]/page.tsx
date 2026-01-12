@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import QRCode from 'react-qr-code'
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,22 +9,30 @@ import { AuthGuard } from '@/components/AuthGuard'
 
 function SessionDetailPageContent({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const { token } = useAuth()
+  const searchParams = useSearchParams()
+  const { token, tenant } = useAuth()
   const sessionId = params.id
+  
+  // Get tenantId from URL query param (for SUPERADMIN viewing other workspaces) or from auth context
+  const tenantIdFromUrl = searchParams?.get('tenantId')
+  const tenantId = tenantIdFromUrl || tenant?.id
   
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadSession()
-    // Reload every 3 seconds
-    const interval = setInterval(loadSession, 3000)
-    return () => clearInterval(interval)
-  }, [sessionId])
+    if (sessionId && tenantId) {
+      loadSession()
+      // Reload every 3 seconds
+      const interval = setInterval(loadSession, 3000)
+      return () => clearInterval(interval)
+    }
+  }, [sessionId, tenantId])
 
   const loadSession = async () => {
     try {
-      const data = await apiClient.getWhatsappSession(sessionId)
+      // Pass tenantId if available (for SUPERADMIN viewing other workspaces)
+      const data = await apiClient.getWhatsappSession(sessionId, tenantId || undefined)
       setSession(data)
     } catch (error) {
       console.error('Error loading session:', error)
@@ -83,12 +91,14 @@ function SessionDetailPageContent({ params }: { params: { id: string } }) {
   }
 
   if (!session) {
+    const backUrl = tenantIdFromUrl ? `/workspaces/${tenantIdFromUrl}?tab=sessions` : '/sessions'
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-center">
-          <p className="text-xl mb-4">Session not found</p>
+          <h1 className="text-2xl font-bold mb-4 text-red-400">Session not found</h1>
+          <p className="text-gray-400 mb-4">The session you are looking for does not exist or you do not have permission to access it.</p>
           <button
-            onClick={() => router.push('/sessions')}
+            onClick={() => router.push(backUrl)}
             className="px-6 py-3 bg-primary text-black rounded hover:bg-primary/80 transition"
           >
             Back to Sessions
@@ -102,7 +112,10 @@ function SessionDetailPageContent({ params }: { params: { id: string } }) {
     <div className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto">
         <button
-          onClick={() => router.push('/sessions')}
+          onClick={() => {
+            const backUrl = tenantIdFromUrl ? `/workspaces/${tenantIdFromUrl}?tab=sessions` : '/sessions'
+            router.push(backUrl)
+          }}
           className="px-4 py-2 bg-surface border border-border rounded hover:border-primary transition mb-6"
         >
           ← Back to Sessions

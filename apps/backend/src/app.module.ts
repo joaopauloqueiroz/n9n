@@ -10,6 +10,9 @@ import { ExecutionModule } from './execution/execution.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { WorkerModule } from './worker/worker.module';
+import { TenantModule } from './tenant/tenant.module';
+import { UserModule } from './user/user.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -26,6 +29,9 @@ import { WorkerModule } from './worker/worker.module';
     WhatsappModule,
     WebsocketModule,
     WorkerModule,
+    TenantModule,
+    UserModule,
+    StorageModule,
   ],
 })
 export class AppModule {}

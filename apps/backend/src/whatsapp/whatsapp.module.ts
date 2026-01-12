@@ -4,10 +4,11 @@ import { WhatsappSessionManager } from './whatsapp-session-manager.service';
 import { WhatsappMessageHandler } from './whatsapp-message-handler.service';
 import { WhatsappInitService } from './whatsapp-init.service';
 import { ExecutionModule } from '../execution/execution.module';
+import { StorageModule } from '../storage/storage.module';
 import { NodeExecutorService } from '../execution/node-executor.service';
 
 @Module({
-  imports: [ExecutionModule],
+  imports: [ExecutionModule, StorageModule],
   providers: [
     WhatsappService,
     WhatsappSessionManager,

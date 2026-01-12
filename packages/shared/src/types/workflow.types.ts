@@ -107,6 +107,21 @@ export interface TriggerMessageConfig {
   sessionId?: string; // WhatsApp session to listen to (optional, if empty listens to all)
 }
 
+export interface TriggerMessagePayload {
+  messageId: string;
+  from: string;
+  type: 'text' | 'media';
+  text: string | null;
+  media: {
+    mediaType: 'image' | 'video' | 'audio' | 'document';
+    mimeType: string;
+    fileName: string | null;
+    size: number;
+    url: string;
+  } | null;
+  timestamp: number;
+}
+
 export interface TriggerScheduleConfig {
   scheduleType: 'cron' | 'interval';
   cronExpression?: string; // for cron type

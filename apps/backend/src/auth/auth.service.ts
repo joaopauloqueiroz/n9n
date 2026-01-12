@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { UserRole } from './types/roles.enum';
 
 @Injectable()
 export class AuthService {
@@ -51,7 +52,8 @@ export class AuthService {
           password: hashedPassword,
           name: name || null,
           tenantId: tenant.id,
-        },
+          role: UserRole.ADMIN,
+        } as any, // Type assertion needed until TypeScript reloads Prisma types
       });
 
       return { tenant, user };
@@ -62,6 +64,7 @@ export class AuthService {
       sub: result.user.id,
       email: result.user.email,
       tenantId: result.tenant.id,
+      role: (result.user as any).role || UserRole.ADMIN,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -73,6 +76,7 @@ export class AuthService {
         email: result.user.email,
         name: result.user.name,
         tenantId: result.tenant.id,
+        role: (result.user as any).role || UserRole.ADMIN,
       },
       tenant: {
         id: result.tenant.id,
@@ -117,6 +121,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       tenantId: user.tenantId,
+      role: (user as any).role || UserRole.ADMIN,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -128,6 +133,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         tenantId: user.tenantId,
+        role: (user as any).role || UserRole.ADMIN,
       },
       tenant: {
         id: user.tenant.id,
@@ -152,6 +158,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       tenantId: user.tenantId,
+      role: (user as any).role || UserRole.ADMIN,
       tenant: {
         id: user.tenant.id,
         name: user.tenant.name,

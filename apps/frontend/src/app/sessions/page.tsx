@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { AuthGuard } from '@/components/AuthGuard'
+import AppHeader from '@/components/AppHeader'
 
 function SessionsPageContent() {
   const router = useRouter()
@@ -81,8 +82,10 @@ function SessionsPageContent() {
   }
 
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-[#0a0a0a]">
+      <AppHeader />
+      <div className="p-8">
+        <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div>
             <button
@@ -203,6 +206,7 @@ function SessionsPageContent() {
               <span className="text-gray-400">Session is not active</span>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

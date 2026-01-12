@@ -8,6 +8,7 @@ interface User {
   email: string
   name?: string
   tenantId: string
+  role?: string
 }
 
 interface Tenant {
@@ -21,7 +22,7 @@ interface AuthContextType {
   tenant: Tenant | null
   token: string | null
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name?: string, tenantName: string) => Promise<void>
+  register: (email: string, password: string, name?: string, tenantName?: string) => Promise<void>
   logout: () => void
   isLoading: boolean
   isAuthenticated: boolean
@@ -76,8 +77,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     apiClient.setToken(response.accessToken)
   }
 
-  const register = async (email: string, password: string, name?: string, tenantName: string = '') => {
-    const response = await apiClient.register(email, password, name, tenantName)
+  const register = async (email: string, password: string, name?: string, tenantName?: string) => {
+    const response = await apiClient.register(email, password, name, tenantName || '')
     
     setToken(response.accessToken)
     setUser(response.user)
@@ -100,6 +101,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TENANT_KEY)
     
     apiClient.setToken(null)
+    
+    // Redirect to login page
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
   }
 
   return (

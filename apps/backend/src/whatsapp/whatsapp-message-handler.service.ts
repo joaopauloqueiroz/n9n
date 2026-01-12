@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExecutionService } from '../execution/execution.service';
 import { ExecutionEngineService } from '../execution/execution-engine.service';
-import { WorkflowNodeType, ExecutionStatus } from '@n9n/shared';
+import { WorkflowNodeType, ExecutionStatus, TriggerMessagePayload } from '@n9n/shared';
 
 @Injectable()
 export class WhatsappMessageHandler {
@@ -19,8 +19,20 @@ export class WhatsappMessageHandler {
     tenantId: string,
     sessionId: string,
     contactId: string,
-    message: string,
+    payload: TriggerMessagePayload | string,
   ): Promise<void> {
+    // Normalize payload: if string, convert to payload format
+    const normalizedPayload: TriggerMessagePayload = typeof payload === 'string'
+      ? {
+          messageId: `text-${Date.now()}`,
+          from: contactId,
+          type: 'text',
+          text: payload,
+          media: null,
+          timestamp: Date.now(),
+        }
+      : payload;
+
     // Check for active execution
     const activeExecution = await this.executionService.getActiveExecution(
       tenantId,
@@ -31,11 +43,13 @@ export class WhatsappMessageHandler {
     if (activeExecution) {
       // Resume existing execution
       if (activeExecution.status === ExecutionStatus.WAITING) {
-        await this.executionEngine.resumeExecution(activeExecution, message);
+        // For resume, we pass the text content
+        const resumeText = normalizedPayload.text || '';
+        await this.executionEngine.resumeExecution(activeExecution, resumeText, normalizedPayload);
       }
     } else {
       // Try to match trigger
-      await this.matchTriggerAndStart(tenantId, sessionId, contactId, message);
+      await this.matchTriggerAndStart(tenantId, sessionId, contactId, normalizedPayload);
     }
   }
 
@@ -46,9 +60,10 @@ export class WhatsappMessageHandler {
     tenantId: string,
     sessionId: string,
     contactId: string,
-    message: string,
+    payload: TriggerMessagePayload,
   ): Promise<void> {
-    console.log('[TRIGGER] Matching message:', message);
+    const messageText = payload.text || '';
+    console.log('[TRIGGER] Matching message:', messageText, 'Type:', payload.type);
     console.log('[TRIGGER] Tenant:', tenantId);
     
     // Get active workflows for this tenant
@@ -92,29 +107,37 @@ export class WhatsappMessageHandler {
       }
 
       // Match message against trigger pattern
+      // For media messages, we match against caption if available, otherwise accept all media
       let matches = false;
+      const textToMatch = messageText.toLowerCase();
 
-      // If no pattern is configured, accept all messages
+      // If no pattern is configured, accept all messages (text and media)
       if (!config.pattern || config.pattern.trim() === '') {
         console.log('[TRIGGER] No pattern configured, accepting all messages');
         matches = true;
       } else if (config.matchType === 'exact') {
-        matches = message.toLowerCase() === config.pattern.toLowerCase();
+        matches = textToMatch === config.pattern.toLowerCase();
       } else if (config.matchType === 'contains') {
-        matches = message.toLowerCase().includes(config.pattern.toLowerCase());
+        matches = textToMatch.includes(config.pattern.toLowerCase());
       } else if (config.matchType === 'regex') {
         const regex = new RegExp(config.pattern, 'i');
-        matches = regex.test(message);
+        matches = regex.test(messageText);
+      }
+
+      // For media messages without caption, accept if pattern matches empty string or accept all
+      if (payload.type === 'media' && !messageText && (!config.pattern || config.pattern.trim() === '')) {
+        matches = true;
       }
 
       if (matches) {
-        // Start execution
+        // Start execution with normalized payload
         await this.executionEngine.startExecution(
           tenantId,
           workflow.id,
           sessionId,
           contactId,
-          message,
+          messageText, // Keep for backward compatibility
+          payload, // Pass full payload
         );
         break; // Only trigger first matching workflow
       }

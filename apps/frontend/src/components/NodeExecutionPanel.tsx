@@ -61,7 +61,7 @@ export default function NodeExecutionPanel({
 
       // Load execution details
       try {
-        const data = await apiClient.getExecution(tenantId, executionId)
+        const data = await apiClient.getExecution(executionId)
         setExecutionData(data)
       } catch (error: any) {
         if (error.response?.status !== 404) {
@@ -71,7 +71,7 @@ export default function NodeExecutionPanel({
 
       // Load execution logs to get node-specific data
       try {
-        const logs = await apiClient.getExecutionLogs(tenantId, executionId)
+        const logs = await apiClient.getExecutionLogs(executionId)
         logs.forEach((log: any, index: number) => {
           // Process logs
         })
