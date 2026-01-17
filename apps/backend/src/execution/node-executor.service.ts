@@ -856,7 +856,7 @@ export class NodeExecutorService {
     let page: any = null;
 
     try {
-      // Launch browser with better stealth settings
+      // Launch browser with better stealth settings and resource limits
       browser = await puppeteer.launch({
         headless: true,
         args: [
@@ -867,10 +867,17 @@ export class NodeExecutorService {
           '--no-first-run',
           '--disable-gpu',
           '--disable-features=IsolateOrigins,site-per-process',
+          '--single-process', // Reduce memory usage
+          '--no-zygote', // Reduce memory usage
         ],
+        timeout: 30000, // 30s timeout for launch
       });
 
       page = await browser.newPage();
+      
+      // Set resource limits
+      await page.setDefaultNavigationTimeout(60000);
+      await page.setDefaultTimeout(30000);
 
       // Set default user agent to avoid detection
       await page.setUserAgent(
@@ -1150,12 +1157,26 @@ export class NodeExecutorService {
         output: { [saveAs]: errorResponse },
       };
     } finally {
-      // Clean up browser resources
-      if (page) {
-        await page.close().catch(() => { });
+      // Clean up browser resources - CRITICAL for memory management
+      try {
+        if (page) {
+          await page.close();
+        }
+      } catch (error) {
+        console.error('[HTTP_SCRAPE] Error closing page:', error);
       }
-      if (browser) {
-        await browser.close().catch(() => { });
+      
+      try {
+        if (browser) {
+          // Force kill all browser processes
+          await browser.close();
+          // Additional cleanup - kill any remaining processes
+          if (browser.process()) {
+            browser.process().kill('SIGKILL');
+          }
+        }
+      } catch (error) {
+        console.error('[HTTP_SCRAPE] Error closing browser:', error);
       }
     }
   }

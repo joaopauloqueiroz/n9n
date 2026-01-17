@@ -32,7 +32,17 @@ services:
       - internal
       - traefik-public
       - n9n-network
+      - merendinhanet
     restart: unless-stopped
+    # Resource limits to prevent OOM and CPU exhaustion
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"
@@ -63,7 +73,17 @@ services:
       - internal
       - traefik-public
       - n9n-network
+      - merendinhanet
     restart: unless-stopped
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"
@@ -94,6 +114,8 @@ networks:
   n9n-network:
     external: true
   traefik-public:
+    external: true
+  merendinhanet:
     external: true
 
 

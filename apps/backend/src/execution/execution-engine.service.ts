@@ -18,6 +18,8 @@ import { ContextService } from './context.service';
 
 @Injectable()
 export class ExecutionEngineService {
+  private activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
+
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
@@ -255,7 +257,7 @@ export class ExecutionEngineService {
     workflow: Workflow,
   ): Promise<void> {
     let iterationCount = 0;
-    const MAX_ITERATIONS = 10000; // Safety limit to prevent infinite loops
+    const MAX_ITERATIONS = 100; // Safety limit to prevent infinite loops (reduced from 10000)
     
     while (execution.status === ExecutionStatus.RUNNING && execution.currentNodeId) {
       iterationCount++;
@@ -264,8 +266,8 @@ export class ExecutionEngineService {
         return;
       }
       
-      if (iterationCount % 100 === 0) {
-        console.log(`[EXECUTION LOOP] Iteration ${iterationCount}, currentNodeId: ${execution.currentNodeId}, status: ${execution.status}`);
+      if (iterationCount % 10 === 0) {
+        console.warn(`[EXECUTION LOOP] High iteration count: ${iterationCount}, currentNodeId: ${execution.currentNodeId}, workflowId: ${execution.workflowId}`);
       }
       
       const currentNode = workflow.nodes.find((n) => n.id === execution.currentNodeId);
@@ -528,7 +530,9 @@ export class ExecutionEngineService {
             const waitMs = result.waitTimeoutSeconds * 1000;
             console.log(`[WAIT] Scheduling auto-resume in ${waitMs}ms`);
 
-            setTimeout(async () => {
+            const timeoutId = setTimeout(async () => {
+              // Remove from active timeouts
+              this.activeTimeouts.delete(execution.id);
               try {
                 console.log(`[WAIT] Auto-resuming execution ${execution.id}`);
 
@@ -589,6 +593,9 @@ export class ExecutionEngineService {
                 console.error('[WAIT] Error auto-resuming execution:', error);
               }
             }, waitMs);
+
+            // Store timeout for cleanup
+            this.activeTimeouts.set(execution.id, timeoutId);
           }
         } else {
           // For WAIT_REPLY, keep currentNodeId as the WAIT_REPLY node
@@ -822,6 +829,9 @@ export class ExecutionEngineService {
     execution: WorkflowExecution,
     reason?: string,
   ): Promise<void> {
+    // Clean up any active timeouts
+    this.cleanupExecutionTimeouts(execution.id);
+
     await this.executionService.updateExecution(execution.id, {
       status: ExecutionStatus.COMPLETED,
     });
@@ -842,6 +852,9 @@ export class ExecutionEngineService {
    * Expire execution
    */
   async expireExecution(execution: WorkflowExecution): Promise<void> {
+    // Clean up any active timeouts
+    this.cleanupExecutionTimeouts(execution.id);
+
     await this.executionService.updateExecution(execution.id, {
       status: ExecutionStatus.EXPIRED,
     });
@@ -862,6 +875,9 @@ export class ExecutionEngineService {
    * Fail execution
    */
   private async failExecution(execution: WorkflowExecution, error: string): Promise<void> {
+    // Clean up any active timeouts
+    this.cleanupExecutionTimeouts(execution.id);
+
     await this.executionService.updateExecution(execution.id, {
       status: ExecutionStatus.ERROR,
       error,
@@ -878,6 +894,17 @@ export class ExecutionEngineService {
       currentNodeId: execution.currentNodeId,
       timestamp: new Date(),
     });
+  }
+
+  /**
+   * Clean up timeouts for an execution
+   */
+  private cleanupExecutionTimeouts(executionId: string): void {
+    const timeoutId = this.activeTimeouts.get(executionId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      this.activeTimeouts.delete(executionId);
+    }
   }
 
   /**

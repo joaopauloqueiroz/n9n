@@ -8,7 +8,10 @@ export class EventBusService {
   constructor(
     private eventEmitter: EventEmitter2,
     private prisma: PrismaService,
-  ) {}
+  ) {
+    // Increase max listeners to prevent memory leak warnings
+    this.eventEmitter.setMaxListeners(50);
+  }
 
   /**
    * Emit event to internal listeners and persist to database

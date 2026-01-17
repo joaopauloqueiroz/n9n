@@ -4,7 +4,12 @@ import { AppModule } from './app.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // Reduce logging in production
+    logger: process.env.NODE_ENV === 'production' 
+      ? ['error', 'warn'] 
+      : ['log', 'error', 'warn', 'debug', 'verbose'],
+  });
   const reflector = app.get(Reflector);
   
   app.useGlobalGuards(new JwtAuthGuard(reflector));
@@ -19,11 +24,13 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      console.log('🔍 CORS Request from origin:', origin);
+      // Reduce logging in production
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🔍 CORS Request from origin:', origin);
+      }
       
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) {
-        console.log('✅ CORS: Allowing request with no origin');
         return callback(null, true);
       }
       
@@ -35,10 +42,9 @@ async function bootstrap() {
         origin.includes('ngrok.app') ||
         allowedOrigins.includes(origin)
       ) {
-        console.log('✅ CORS: Allowing origin:', origin);
         callback(null, true);
       } else {
-        console.log('❌ CORS: Blocking origin:', origin);
+        console.warn('❌ CORS: Blocking origin:', origin);
         callback(new Error('Not allowed by CORS'));
       }
     },

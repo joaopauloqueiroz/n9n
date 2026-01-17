@@ -3,6 +3,20 @@ import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  constructor() {
+    super({
+      log: process.env.NODE_ENV === 'production' 
+        ? ['error', 'warn']
+        : ['query', 'error', 'warn'],
+      // Connection pool settings for better performance
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
+    });
+  }
+
   async onModuleInit() {
     await this.$connect();
   }
