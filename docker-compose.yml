@@ -12,7 +12,7 @@ services:
       - DATABASE_URL=postgresql://n9n:n9npassWd*@postgres_vps:5432/n9n
       - REDIS_HOST=redis_vps
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=tYCkGHWdFJmfKQI9nZb5pRvghDeMCLiY
+      - REDIS_PASSWORD=FSUYRDK7rX5JBlwGtXz9bL2NIZoIKFd1
       - FRONTEND_URL=https://n9n.archcode.space
       - CORS_ORIGIN=https://n9n.archcode.space
       - WHATSAPP_SESSION_PATH=/app/apps/backend/.wwebjs_auth
@@ -21,7 +21,7 @@ services:
       - MINIO_PORT=9000
       - MINIO_USE_SSL=false
       - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=JVjJSX8HviaNsExEAnNUOEsmFK4itMnM
+      - MINIO_SECRET_KEY=tlLVeKdXkSNu6GEEz0tOD0HhRyBnoQnB
       - MINIO_BUCKET_NAME=media-triggers
     ports:
       - "3041:3041"
