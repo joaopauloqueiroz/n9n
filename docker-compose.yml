@@ -17,7 +17,7 @@ services:
       - CORS_ORIGIN=https://n9n.archcode.space
       - WHATSAPP_SESSION_PATH=/app/apps/backend/.wwebjs_auth
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-      - MINIO_ENDPOINT=minio_vps
+      - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_USE_SSL=false
       - MINIO_ACCESS_KEY=minioadmin
