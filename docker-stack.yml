@@ -1,0 +1,93 @@
+version: "3.8"
+
+services:
+  backend-n9n:
+    image: ghcr.io/archcode/n9n-backend:latest
+
+    environment:
+      NODE_ENV: production
+      PORT: 3041
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: redis_vps
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      FRONTEND_URL: https://n9n.archcode.space
+      CORS_ORIGIN: https://n9n.archcode.space
+      WHATSAPP_SESSION_PATH: /app/apps/backend/.wwebjs_auth
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_NAME: media-triggers
+
+    volumes:
+      - whatsapp_sessions:/app/apps/backend/.wwebjs_auth
+      - whatsapp_sessions_data:/app/apps/backend/.wwebjs_cache
+
+    networks:
+      - traefik-public
+      - n9n-network
+      - merendinhanet
+
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik-public
+        - traefik.http.routers.backend-n9n.rule=Host(`api.n9n.archcode.space`)
+        - traefik.http.routers.backend-n9n.entrypoints=websecure
+        - traefik.http.routers.backend-n9n.tls=true
+        - traefik.http.routers.backend-n9n.tls.certresolver=mytlschallenge
+        - traefik.http.services.backend-n9n.loadbalancer.server.port=3041
+        - traefik.http.middlewares.backend-cors.headers.accesscontrolalloworiginlist=*
+        - traefik.http.routers.backend-n9n.middlewares=backend-cors@docker
+
+  frontend-n9n:
+    image: ghcr.io/archcode/n9n-frontend:latest
+
+    environment:
+      NODE_ENV: production
+      PORT: 3040
+      NEXT_PUBLIC_API_URL: https://api.n9n.archcode.space
+
+    networks:
+      - traefik-public
+
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik-public
+        - traefik.http.routers.frontend-n9n.rule=Host(`n9n.archcode.space`)
+        - traefik.http.routers.frontend-n9n.entrypoints=websecure
+        - traefik.http.routers.frontend-n9n.tls=true
+        - traefik.http.routers.frontend-n9n.tls.certresolver=mytlschallenge
+        - traefik.http.services.frontend-n9n.loadbalancer.server.port=3040
+
+volumes:
+  whatsapp_sessions:
+  whatsapp_sessions_data:
+
+networks:
+  traefik-public:
+    external: true
+  n9n-network:
+    external: true
+  merendinhanet:
+    external: true
