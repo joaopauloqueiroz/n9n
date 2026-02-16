@@ -37,6 +37,8 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
   private sessions: Map<string, SessionClient> = new Map();
   private logger = pino({ level: 'silent' });
   private baileys: any;
+  private readyPromise: Promise<void>;
+  private resolveReady: () => void;
 
   constructor(
     private configService: ConfigService,
@@ -45,11 +47,20 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
     private messageHandler: WhatsappMessageHandler,
     private whatsappSender: WhatsappSenderService,
     private storageService: StorageService,
-  ) { }
+  ) {
+    this.readyPromise = new Promise((resolve) => {
+      this.resolveReady = resolve;
+    });
+  }
 
   async onModuleInit() {
     // Dynamic import Baileys since it's ESM only
-    this.baileys = await (eval(`import('@whiskeysockets/baileys')`));
+    try {
+      this.baileys = await (eval(`import('@whiskeysockets/baileys')`));
+      this.resolveReady();
+    } catch (error) {
+      console.error('Failed to load Baileys:', error);
+    }
 
     // Register send message callback
     this.whatsappSender.registerSendMessage(
@@ -87,6 +98,9 @@ export class WhatsappSessionManager implements OnModuleInit, OnModuleDestroy {
    * Initialize WhatsApp session
    */
   async initializeSession(tenantId: string, sessionId: string): Promise<void> {
+    // Wait for Baileys to be loaded
+    await this.readyPromise;
+
     if (this.sessions.has(sessionId)) {
       console.log(`Session ${sessionId} already initialized, skipping...`);
       return;

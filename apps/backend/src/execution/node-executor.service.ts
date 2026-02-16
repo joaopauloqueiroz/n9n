@@ -576,7 +576,7 @@ export class NodeExecutorService {
 
     // Execute command
     const execAsync = promisify(exec);
-    
+
     try {
       const options: any = {
         timeout,
@@ -584,7 +584,7 @@ export class NodeExecutorService {
       };
 
       const { stdout, stderr } = await execAsync(fullCommand, options);
-      
+
       // Save outputs to context variables
       const outputVarName = config.saveOutputAs || 'commandOutput';
       const errorVarName = config.saveErrorAs || 'commandError';
@@ -874,7 +874,7 @@ export class NodeExecutorService {
       });
 
       page = await browser.newPage();
-      
+
       // Set resource limits
       await page.setDefaultNavigationTimeout(60000);
       await page.setDefaultTimeout(30000);
@@ -1165,7 +1165,7 @@ export class NodeExecutorService {
       } catch (error) {
         console.error('[HTTP_SCRAPE] Error closing page:', error);
       }
-      
+
       try {
         if (browser) {
           // Force kill all browser processes
