@@ -180,7 +180,7 @@ function WorkspaceDetailsPageContent() {
 
     try {
       setError(null)
-      await apiClient.deleteWhatsappSession(deletingSession.id)
+      await apiClient.deleteWhatsappSession(deletingSession.id, workspaceId)
       setSuccess('Session deleted successfully')
       setShowDeleteModal(false)
       setDeletingSession(null)
@@ -299,10 +299,10 @@ function WorkspaceDetailsPageContent() {
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4 text-red-400">Workspace not found</h1>
           <button
-            onClick={() => router.push('/workspaces')}
+            onClick={() => router.push('/')}
             className="px-4 py-2 bg-primary text-black rounded hover:bg-primary/80 transition"
           >
-            Back to Workspaces
+            Back Home
           </button>
         </div>
       </div>
@@ -316,13 +316,15 @@ function WorkspaceDetailsPageContent() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <button
-              onClick={() => router.push('/workspaces')}
-              className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded hover:border-primary transition mb-4"
-            >
-              <ArrowLeft size={16} />
-              Back to Workspaces
-            </button>
+            {isSuperAdmin(currentUser?.role) && (
+              <button
+                onClick={() => router.push('/workspaces')}
+                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded hover:border-primary transition mb-4"
+              >
+                <ArrowLeft size={16} />
+                Back to Workspaces
+              </button>
+            )}
 
             <div className="flex items-start justify-between">
               <div>

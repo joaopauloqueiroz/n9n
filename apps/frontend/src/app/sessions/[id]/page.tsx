@@ -12,11 +12,11 @@ function SessionDetailPageContent({ params }: { params: { id: string } }) {
   const searchParams = useSearchParams()
   const { token, tenant } = useAuth()
   const sessionId = params.id
-  
+
   // Get tenantId from URL query param (for SUPERADMIN viewing other workspaces) or from auth context
   const tenantIdFromUrl = searchParams?.get('tenantId')
   const tenantId = tenantIdFromUrl || tenant?.id
-  
+
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
@@ -47,7 +47,7 @@ function SessionDetailPageContent({ params }: { params: { id: string } }) {
     }
 
     try {
-      await apiClient.deleteWhatsappSession(sessionId)
+      await apiClient.deleteWhatsappSession(sessionId, tenantId)
       router.push('/sessions')
     } catch (error) {
       console.error('Error deleting session:', error)
@@ -144,17 +144,17 @@ function SessionDetailPageContent({ params }: { params: { id: string } }) {
                 <p className="text-lg">📱 {session.phoneNumber}</p>
               </div>
             )}
-            
+
             <div>
               <p className="text-sm text-gray-400">Session ID</p>
               <p className="text-sm font-mono bg-background p-2 rounded">{session.id}</p>
             </div>
-            
+
             <div>
               <p className="text-sm text-gray-400">Created</p>
               <p>{new Date(session.createdAt).toLocaleString()}</p>
             </div>
-            
+
             <div>
               <p className="text-sm text-gray-400">Last Updated</p>
               <p>{new Date(session.updatedAt).toLocaleString()}</p>

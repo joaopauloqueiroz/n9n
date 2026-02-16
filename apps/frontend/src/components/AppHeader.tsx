@@ -12,8 +12,8 @@ export default function AppHeader() {
     <header className="bg-[#151515] border-b border-gray-800 px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link 
-            href={isSuperAdmin(user?.role) ? "/workspaces" : "/workflows"} 
+          <Link
+            href="/"
             className="text-2xl font-bold text-white hover:text-primary transition"
           >
             N9N

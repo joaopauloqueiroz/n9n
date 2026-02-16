@@ -119,8 +119,9 @@ export const apiClient = {
     return data
   },
 
-  deleteWhatsappSession: async (sessionId: string) => {
-    await client.delete(`/api/whatsapp/sessions/${sessionId}`)
+  deleteWhatsappSession: async (sessionId: string, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    await client.delete(`/api/whatsapp/sessions/${sessionId}`, { params })
   },
 
   reconnectWhatsappSession: async (sessionId: string) => {
