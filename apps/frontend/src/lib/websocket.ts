@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { WorkflowEvent } from '@n9n/shared'
 
-const WS_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '')
+const WS_URL = (process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001').replace(/\/$/, '')
 
 class WebSocketClient {
   private socket: Socket | null = null
@@ -40,7 +40,7 @@ class WebSocketClient {
 
     this.socket.on('workflow:event', (event: WorkflowEvent) => {
       console.log('📨 Received event:', event.type, event)
-      
+
       const handlers = this.listeners.get(event.type)
       if (handlers) {
         handlers.forEach((handler) => handler(event))
