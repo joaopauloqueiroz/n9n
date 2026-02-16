@@ -91,10 +91,10 @@ export default function WorkflowCanvas({
       const isExecuted = executedEdges.has(edgeKey) || executedEdges.has(edgeId)
       const isFailed = failedEdges.has(edgeKey) || failedEdges.has(edgeId)
       const isCurrentlyActive = currentNodeId === edge.source
-      
+
       // Determine edge color and style based on execution status
       let edgeStyle: any = {}
-      
+
       if (isFailed) {
         // Red for failed edges - thicker and more visible
         edgeStyle.stroke = '#ef4444'
@@ -120,7 +120,7 @@ export default function WorkflowCanvas({
         edgeStyle.stroke = '#3a3a3a'
         edgeStyle.strokeWidth = 2
       }
-      
+
       return {
         id: edge.id,
         type: 'custom',
@@ -145,10 +145,10 @@ export default function WorkflowCanvas({
         ...connection,
         id: `edge-${Date.now()}`,
       }
-      
+
       setEdges((eds) => {
         const updatedEdges = addEdge(newEdge, eds)
-        
+
         if (onChange) {
           // Convert current nodes to WorkflowNode format
           const workflowNodes: WorkflowNode[] = nodes.map((node) => ({
@@ -157,7 +157,7 @@ export default function WorkflowCanvas({
             config: node.data.config,
             position: node.position,
           }))
-          
+
           // Convert updated edges to WorkflowEdge format
           const workflowEdges: WorkflowEdge[] = updatedEdges.map((e) => ({
             id: e.id,
@@ -166,10 +166,10 @@ export default function WorkflowCanvas({
             label: typeof e.label === 'string' ? e.label : undefined,
             condition: e.sourceHandle || undefined, // Save sourceHandle as condition (for CONDITION nodes)
           }))
-          
+
           onChange(workflowNodes, workflowEdges)
         }
-        
+
         return updatedEdges
       })
     },
@@ -183,7 +183,7 @@ export default function WorkflowCanvas({
       if (onChange && !readonly) {
         // Only save on position changes (when user stops dragging)
         const hasPositionChange = changes.some((c: any) => c.type === 'position' && c.dragging === false)
-        
+
         if (hasPositionChange) {
           // Update positions
           const updatedNodes: WorkflowNode[] = nodes.map((node) => {
@@ -203,7 +203,7 @@ export default function WorkflowCanvas({
               position: node.position,
             }
           })
-          
+
           // Convert current edges to WorkflowEdge format
           const workflowEdges: WorkflowEdge[] = edges.map((e) => ({
             id: e.id,
@@ -212,7 +212,7 @@ export default function WorkflowCanvas({
             label: typeof e.label === 'string' ? e.label : undefined,
             condition: e.sourceHandle || undefined, // Save sourceHandle as condition (for CONDITION nodes)
           }))
-          
+
           onChange(updatedNodes, workflowEdges)
         }
       }
@@ -227,7 +227,7 @@ export default function WorkflowCanvas({
       if (onChange && !readonly) {
         // Check if there's a remove change
         const hasRemove = changes.some((c: any) => c.type === 'remove')
-        
+
         if (hasRemove) {
           // Wait for state to update, then save
           setTimeout(() => {
@@ -238,7 +238,7 @@ export default function WorkflowCanvas({
                 config: node.data.config,
                 position: node.position,
               }))
-              
+
               const workflowEdges: WorkflowEdge[] = currentEdges.map((e) => ({
                 id: e.id,
                 source: e.source,
@@ -246,7 +246,7 @@ export default function WorkflowCanvas({
                 label: typeof e.label === 'string' ? e.label : undefined,
                 condition: e.sourceHandle || undefined,
               }))
-              
+
               onChange(workflowNodes, workflowEdges)
               return currentEdges
             })
@@ -280,7 +280,7 @@ export default function WorkflowCanvas({
       event.preventDefault()
 
       const type = event.dataTransfer.getData('application/reactflow') as WorkflowNodeType
-      
+
       if (typeof type === 'undefined' || !type || !reactFlowWrapper.current) {
         return
       }
@@ -310,7 +310,7 @@ export default function WorkflowCanvas({
     if (selectedNodes.length > 0) {
       const updatedNodes = nodes.filter(n => !selectedNodes.includes(n.id))
       const updatedEdges = edges.filter(e => !selectedNodes.includes(e.source) && !selectedNodes.includes(e.target))
-      
+
       setNodes(updatedNodes)
       setEdges(updatedEdges)
 
@@ -321,7 +321,7 @@ export default function WorkflowCanvas({
           config: node.data.config,
           position: node.position,
         }))
-        
+
         const workflowEdges: WorkflowEdge[] = updatedEdges.map((e) => ({
           id: e.id,
           source: e.source,
@@ -329,17 +329,17 @@ export default function WorkflowCanvas({
           label: typeof e.label === 'string' ? e.label : undefined,
           condition: e.sourceHandle || undefined,
         }))
-        
+
         onChange(workflowNodes, workflowEdges)
       }
-      
+
       setSelectedNodes([])
     }
 
     // Delete selected edges
     if (selectedEdges.length > 0) {
       const updatedEdges = edges.filter(e => !selectedEdges.includes(e.id))
-      
+
       setEdges(updatedEdges)
 
       if (onChange) {
@@ -349,7 +349,7 @@ export default function WorkflowCanvas({
           config: node.data.config,
           position: node.position,
         }))
-        
+
         const workflowEdges: WorkflowEdge[] = updatedEdges.map((e) => ({
           id: e.id,
           source: e.source,
@@ -357,30 +357,118 @@ export default function WorkflowCanvas({
           label: typeof e.label === 'string' ? e.label : undefined,
           condition: e.sourceHandle || undefined,
         }))
-        
+
         onChange(workflowNodes, workflowEdges)
       }
-      
+
       setSelectedEdges([])
     }
   }, [readonly, selectedNodes, selectedEdges, nodes, edges, onChange])
 
-  // Handle keyboard delete
+  const clipboard = useRef<{ nodes: Node[], edges: Edge[] } | null>(null)
+
+  const handleCopy = useCallback(() => {
+    const nodesToCopy = nodes.filter(n => selectedNodes.includes(n.id))
+    const edgesToCopy = edges.filter(e => selectedEdges.includes(e.id))
+
+    if (nodesToCopy.length > 0) {
+      clipboard.current = { nodes: nodesToCopy, edges: edgesToCopy }
+    }
+  }, [nodes, edges, selectedNodes, selectedEdges])
+
+  const handlePaste = useCallback(() => {
+    if (!clipboard.current || readonly) return
+
+    const { nodes: copiedNodes, edges: copiedEdges } = clipboard.current
+    const timestamp = Date.now()
+    const idMap: Record<string, string> = {}
+
+    // Create new nodes
+    const newNodes: Node[] = copiedNodes.map(node => {
+      const newId = `${node.data.type?.toLowerCase() || 'node'}-${timestamp}-${Math.random().toString(36).substring(2, 7)}`
+      idMap[node.id] = newId
+
+      return {
+        ...node,
+        id: newId,
+        position: {
+          x: node.position.x + 40,
+          y: node.position.y + 40,
+        },
+        selected: true,
+      }
+    })
+
+    // Create new edges that connection the new nodes
+    const newEdges: Edge[] = copiedEdges
+      .filter(edge => idMap[edge.source] && idMap[edge.target])
+      .map(edge => ({
+        ...edge,
+        id: `edge-${timestamp}-${Math.random().toString(36).substring(2, 7)}`,
+        source: idMap[edge.source],
+        target: idMap[edge.target],
+        selected: true,
+      }))
+
+    // Deselect current nodes/edges
+    setNodes(nds => nds.map(n => ({ ...n, selected: false })))
+    setEdges(eds => eds.map(e => ({ ...e, selected: false })))
+
+    const updatedNodes = [...nodes.map(n => ({ ...n, selected: false })), ...newNodes]
+    const updatedEdges = [...edges.map(e => ({ ...e, selected: false })), ...newEdges]
+
+    setNodes(updatedNodes)
+    setEdges(updatedEdges)
+
+    if (onChange) {
+      const workflowNodes: WorkflowNode[] = updatedNodes.map((node) => ({
+        id: node.id,
+        type: node.data.type,
+        config: node.data.config,
+        position: node.position,
+      }))
+
+      const workflowEdges: WorkflowEdge[] = updatedEdges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: typeof e.label === 'string' ? e.label : undefined,
+        condition: e.sourceHandle || undefined,
+      }))
+
+      onChange(workflowNodes, workflowEdges)
+    }
+  }, [nodes, edges, readonly, onChange])
+
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Check if we're not in an input field
+      const target = event.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return
+      }
+
+      // Delete/Backspace
       if ((event.key === 'Delete' || event.key === 'Backspace') && !readonly) {
-        // Check if we're not in an input field
-        const target = event.target as HTMLElement
-        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-          event.preventDefault()
-          handleDelete()
-        }
+        event.preventDefault()
+        handleDelete()
+      }
+
+      // Copy (Ctrl+C or Cmd+C)
+      if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+        handleCopy()
+      }
+
+      // Paste (Ctrl+V or Cmd+V)
+      if ((event.ctrlKey || event.metaKey) && event.key === 'v' && !readonly) {
+        handlePaste()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleDelete, readonly])
+  }, [handleDelete, handleCopy, handlePaste, readonly])
 
   return (
     <div ref={reactFlowWrapper} className="w-full h-full">
@@ -410,7 +498,7 @@ export default function WorkflowCanvas({
             return '#333'
           }}
         />
-        
+
       </ReactFlow>
     </div>
   )

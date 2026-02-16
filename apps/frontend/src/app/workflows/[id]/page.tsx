@@ -13,6 +13,7 @@ import NodesSidebar from '@/components/NodesSidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { AuthGuard } from '@/components/AuthGuard'
 import AppHeader from '@/components/AppHeader'
+import { Copy } from 'lucide-react'
 
 const WorkflowCanvas = dynamic(() => import('@/components/WorkflowCanvas'), {
   ssr: false,
@@ -24,7 +25,7 @@ function WorkflowPageContent() {
   const searchParams = useSearchParams()
   const workflowId = params.id as string
   const { tenant, token } = useAuth()
-  
+
   // Get tenantId from URL query param (for SUPERADMIN viewing other workspaces) or from auth context
   const tenantIdFromUrl = searchParams?.get('tenantId')
   const tenantId = tenantIdFromUrl || tenant?.id
@@ -83,9 +84,9 @@ function WorkflowPageContent() {
           handleNodeExecuted.lastProcessedTime = now
           handleNodeExecuted.eventCount = 0
         }
-        
+
         handleNodeExecuted.eventCount++
-        
+
         // If we're receiving more than 5 events per second, throttle aggressively
         if (now - handleNodeExecuted.lastProcessedTime < 200) {
           if (handleNodeExecuted.eventCount > 5) {
@@ -102,7 +103,7 @@ function WorkflowPageContent() {
           handleNodeExecuted.lastProcessedTime = now
           handleNodeExecuted.eventCount = 0
         }
-        
+
         // Additional check: if same node is executed more than 100 times, it's likely a loop
         if (!handleNodeExecuted.nodeExecutionCount) {
           handleNodeExecuted.nodeExecutionCount = new Map()
@@ -114,22 +115,22 @@ function WorkflowPageContent() {
           return
         }
         handleNodeExecuted.nodeExecutionCount.set(event.nodeId, nodeCount + 1)
-        
+
         const prevNodeId = currentNodeId || previousNodeId
         setCurrentNodeId(event.nodeId)
         // Mark node as executed successfully
         setExecutedNodes(prev => new Set([...prev, event.nodeId]))
-        
+
         // Track executed edges: when a node executes, the edge from previous to current was executed
         // Use currentEdgesRef to ensure we have the latest edges
         const currentEdges = currentEdgesRef.current.length > 0 ? currentEdgesRef.current : (workflow?.edges || [])
-        
+
         if (prevNodeId && currentEdges.length > 0) {
           // Find the edge that connects previous node to current node
-          const executedEdge = currentEdges.find((e: WorkflowEdge) => 
+          const executedEdge = currentEdges.find((e: WorkflowEdge) =>
             e.source === prevNodeId && e.target === event.nodeId
           )
-          
+
           if (executedEdge) {
             const edgeId = `${executedEdge.source}-${executedEdge.target}`
             setExecutedEdges(prev => {
@@ -141,12 +142,12 @@ function WorkflowPageContent() {
           // First node execution - no edge to track yet
           setPreviousNodeId(event.nodeId)
         }
-        
+
         // Update previous node ID for next iteration
         setPreviousNodeId(event.nodeId)
       }
     }
-    
+
     // Initialize throttling variables
     handleNodeExecuted.lastProcessedTime = 0
     handleNodeExecuted.eventCount = 0
@@ -168,18 +169,18 @@ function WorkflowPageContent() {
     const handleExecutionCompleted = async (event: any) => {
       if (event.workflowId === workflowId) {
         setExecutionStatus('completed')
-        
+
         // Reset node execution count on completion
         if (handleNodeExecuted.nodeExecutionCount) {
           handleNodeExecuted.nodeExecutionCount.clear()
         }
-        
+
         // Load execution logs to reconstruct the full execution path
         if (event.executionId) {
           try {
             const logs = await apiClient.getExecutionLogs(event.executionId)
             const executedNodeIds: string[] = []
-            
+
             // Extract node execution sequence from logs
             logs.forEach((log: any) => {
               const logType = log.eventType || log.type
@@ -187,33 +188,33 @@ function WorkflowPageContent() {
                 executedNodeIds.push(log.nodeId)
               }
             })
-            
+
             // Use currentEdgesRef to ensure we have the latest edges
             const currentEdges = currentEdgesRef.current.length > 0 ? currentEdgesRef.current : (workflow?.edges || [])
-            
+
             // Reconstruct executed edges from node sequence
             const executedEdgesSet = new Set<string>()
             for (let i = 0; i < executedNodeIds.length - 1; i++) {
               const sourceNodeId = executedNodeIds[i]
               const targetNodeId = executedNodeIds[i + 1]
-              
+
               // Find edge connecting these nodes
-              const edge = currentEdges.find((e: WorkflowEdge) => 
+              const edge = currentEdges.find((e: WorkflowEdge) =>
                 e.source === sourceNodeId && e.target === targetNodeId
               )
-              
+
               if (edge) {
                 const edgeId = `${edge.source}-${edge.target}`
                 executedEdgesSet.add(edgeId)
               }
             }
-            
+
             setExecutedEdges(executedEdgesSet)
           } catch (error) {
             console.error('Error loading execution logs:', error)
           }
         }
-        
+
         // Keep the execution ID for a while so users can inspect nodes
         setTimeout(() => {
           setCurrentNodeId(null)
@@ -232,7 +233,7 @@ function WorkflowPageContent() {
         // Mark current node as failed
         if (event.nodeId) {
           setFailedNodes(prev => new Set([...prev, event.nodeId]))
-          
+
           // Mark edges from failed node as failed
           const currentEdges = currentEdgesRef.current.length > 0 ? currentEdgesRef.current : (workflow?.edges || [])
           if (currentEdges.length > 0) {
@@ -482,25 +483,25 @@ function WorkflowPageContent() {
 
     setExecutedNodes(executed)
     setFailedNodes(failed)
-    
+
     // Reconstruct executed edges from node sequence
     if (workflow?.edges && executedNodeIds.length > 1) {
       const executedEdgesSet = new Set<string>()
       for (let i = 0; i < executedNodeIds.length - 1; i++) {
         const sourceNodeId = executedNodeIds[i]
         const targetNodeId = executedNodeIds[i + 1]
-        
+
         // Find edge connecting these nodes
-        const edge = workflow.edges.find((e: WorkflowEdge) => 
+        const edge = workflow.edges.find((e: WorkflowEdge) =>
           e.source === sourceNodeId && e.target === targetNodeId
         )
-        
+
         if (edge) {
           const edgeId = `${edge.source}-${edge.target}`
           executedEdgesSet.add(edgeId)
         }
       }
-      
+
       setExecutedEdges(executedEdgesSet)
     }
   }
@@ -526,6 +527,22 @@ function WorkflowPageContent() {
       setWorkflow(updated)
     } catch (error) {
       console.error('Error toggling workflow:', error)
+    }
+  }
+
+  const handleDuplicate = async () => {
+    try {
+      setSaveStatus('saving')
+      const duplicated = await apiClient.duplicateWorkflow(workflowId, tenantId || undefined)
+      setSaveStatus('saved')
+      // Redirect to the new workflow after a short delay
+      setTimeout(() => {
+        router.push(`/workflows/${duplicated.id}${tenantIdFromUrl ? `?tenantId=${tenantIdFromUrl}` : ''}`)
+      }, 500)
+    } catch (error) {
+      console.error('Error duplicating workflow:', error)
+      setSaveStatus('error')
+      alert('Failed to duplicate workflow')
     }
   }
 
@@ -595,16 +612,16 @@ function WorkflowPageContent() {
           {/* Save Status Indicator */}
           {saveStatus !== 'idle' && (
             <div className={`flex items-center gap-2 px-4 py-2 rounded border ${saveStatus === 'saving' ? 'bg-blue-500/10 border-blue-500' :
-                saveStatus === 'saved' ? 'bg-green-500/10 border-green-500' :
-                  'bg-red-500/10 border-red-500'
+              saveStatus === 'saved' ? 'bg-green-500/10 border-green-500' :
+                'bg-red-500/10 border-red-500'
               }`}>
               <div className={`w-2 h-2 rounded-full ${saveStatus === 'saving' ? 'bg-blue-500 animate-pulse' :
-                  saveStatus === 'saved' ? 'bg-green-500' :
-                    'bg-red-500'
+                saveStatus === 'saved' ? 'bg-green-500' :
+                  'bg-red-500'
                 }`} />
               <span className={`text-sm ${saveStatus === 'saving' ? 'text-blue-400' :
-                  saveStatus === 'saved' ? 'text-green-400' :
-                    'text-red-400'
+                saveStatus === 'saved' ? 'text-green-400' :
+                  'text-red-400'
                 }`}>
                 {saveStatus === 'saving' ? 'Salvando...' :
                   saveStatus === 'saved' ? 'Salvo!' :
@@ -617,10 +634,10 @@ function WorkflowPageContent() {
           {executionStatus !== 'idle' && (
             <div className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded">
               <div className={`w-2 h-2 rounded-full ${executionStatus === 'running' ? 'bg-blue-500 animate-pulse' :
-                  executionStatus === 'waiting' ? 'bg-yellow-500 animate-pulse' :
-                    executionStatus === 'completed' ? 'bg-primary' :
-                      executionStatus === 'failed' ? 'bg-red-500' :
-                        'bg-gray-500'
+                executionStatus === 'waiting' ? 'bg-yellow-500 animate-pulse' :
+                  executionStatus === 'completed' ? 'bg-primary' :
+                    executionStatus === 'failed' ? 'bg-red-500' :
+                      'bg-gray-500'
                 }`} />
               <span className="text-sm">
                 {executionStatus === 'running' ? 'Running' :
@@ -670,10 +687,18 @@ function WorkflowPageContent() {
           </button>
 
           <button
+            onClick={handleDuplicate}
+            className="px-4 py-2 bg-surface border border-border rounded hover:border-primary transition flex items-center gap-2"
+          >
+            <Copy size={16} className="text-primary" />
+            <span>Duplicate</span>
+          </button>
+
+          <button
             onClick={toggleActive}
             className={`px-4 py-2 rounded transition ${workflow.isActive
-                ? 'bg-primary text-black hover:bg-primary/80'
-                : 'bg-gray-700 text-white hover:bg-gray-600'
+              ? 'bg-primary text-black hover:bg-primary/80'
+              : 'bg-gray-700 text-white hover:bg-gray-600'
               }`}
           >
             {workflow.isActive ? 'Active' : 'Inactive'}

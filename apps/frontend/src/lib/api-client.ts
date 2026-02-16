@@ -94,6 +94,12 @@ export const apiClient = {
     await client.delete(`/api/workflows/${workflowId}`, { params })
   },
 
+  duplicateWorkflow: async (workflowId: string, tenantId?: string) => {
+    const params = tenantId ? { tenantId } : {}
+    const { data } = await client.post(`/api/workflows/${workflowId}/duplicate`, {}, { params })
+    return data
+  },
+
   // WhatsApp Sessions
   getWhatsappSessions: async (tenantId?: string) => {
     const params = tenantId ? { tenantId } : {}

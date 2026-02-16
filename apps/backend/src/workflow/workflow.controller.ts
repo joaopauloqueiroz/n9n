@@ -106,6 +106,11 @@ export class WorkflowController {
     );
   }
 
+  @Post('workflows/:id/duplicate')
+  async duplicateWorkflow(@Tenant() tenantId: string, @Param('id') id: string) {
+    return this.workflowService.duplicateWorkflow(tenantId, id);
+  }
+
   // WhatsApp Sessions
 
   @Get('whatsapp/sessions')
@@ -213,6 +218,32 @@ export class WorkflowController {
     @Body() body: { contactId: string; message: string },
   ) {
     await this.whatsappSessionManager.sendMessage(sessionId, body.contactId, body.message);
+    return { success: true };
+  }
+
+  @Post('whatsapp/sessions/:id/send-media')
+  async sendMedia(
+    @Param('id') sessionId: string,
+    @Body() body: {
+      contactId: string;
+      mediaType: 'image' | 'video' | 'audio' | 'document';
+      mediaUrl: string;
+      caption?: string;
+      fileName?: string;
+      sendAudioAsVoice?: boolean;
+    },
+  ) {
+    await this.whatsappSessionManager.sendMedia(
+      sessionId,
+      body.contactId,
+      body.mediaType,
+      body.mediaUrl,
+      {
+        caption: body.caption,
+        fileName: body.fileName,
+        sendAudioAsVoice: body.sendAudioAsVoice,
+      },
+    );
     return { success: true };
   }
 

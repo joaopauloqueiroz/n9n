@@ -281,7 +281,7 @@ export class WorkflowService {
     if (nodeConfig) {
       node.config = { ...node.config, ...nodeConfig };
     }
-    
+
     // Validate node config for LOOP nodes
     if (node.type === 'LOOP' && (!node.config || !node.config.loopMode)) {
       throw new Error(`Loop node configuration is missing. Please save the node configuration before testing. Config: ${JSON.stringify(node.config)}`);
@@ -313,7 +313,7 @@ export class WorkflowService {
         where: { id: existingExecution.sessionId, tenantId },
       });
     }
-    
+
     // If no session from existing execution, try to find any connected session
     if (!session) {
       session = await this.prisma.whatsappSession.findFirst({
@@ -357,6 +357,32 @@ export class WorkflowService {
     );
 
     return { executionId: newExecution.id };
+  }
+
+  /**
+   * Duplicate workflow
+   */
+  async duplicateWorkflow(tenantId: string, workflowId: string): Promise<Workflow> {
+    const original = await this.prisma.workflow.findFirst({
+      where: { id: workflowId, tenantId },
+    });
+
+    if (!original) {
+      throw new Error('Workflow not found');
+    }
+
+    const duplicated = await this.prisma.workflow.create({
+      data: {
+        tenantId,
+        name: `${original.name} (Copy)`,
+        description: original.description,
+        nodes: original.nodes as any,
+        edges: original.edges as any,
+        isActive: false, // Don't activate duplicated workflows by default
+      },
+    });
+
+    return this.mapToWorkflow(duplicated);
   }
 }
 
