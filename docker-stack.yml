@@ -42,7 +42,7 @@ services:
       labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
-      - traefik.http.routers.backend-n9n.rule=Host(`api.n9n.archcode.space`) && PathPrefix(`/api`)
+      - traefik.http.routers.backend-n9n.rule=Host(`api.n9n.archcode.space`) && (PathPrefix(`/api`) || PathPrefix(`/socket.io`))
       - traefik.http.routers.backend-n9n.entrypoints=websecure
       - traefik.http.routers.backend-n9n.tls=true
       - traefik.http.routers.backend-n9n.tls.certresolver=letsencryptresolver
